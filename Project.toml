@@ -1,0 +1,11 @@
+name = "WindTunnelFlow"
+uuid = "e0585354-9e7e-483a-8342-b12d75102d0c"
+authors = ["Diederik Beckers <beckersdiederik@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+ImmersedLayers = "cdc13194-334e-4e1c-bc8d-fc3a28509c85"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
+ViscousFlow = "103da179-b3e4-57c1-99a4-586354eb2c5a"
