@@ -150,7 +150,9 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     normal_interpolate!(vnminus,wt_vel,extra_cache.wt_sys)
     vnminus .*= -1
 
-    # add_sink!(vnminus,phys_params,extra_cache.wt_sys,t)
+    Δs = surface_point_spacing(base_cache.g,phys_params)
+    vn_pts = points(extra_cache.wt_sys)
+    add_sink!(vnminus,vn_pts,Δs,phys_params,sys,t)
 
     f, df, s, ds = solve(vnplus,vnminus,extra_cache.wt_sys)
 
@@ -167,17 +169,60 @@ end
 
 function create_windtunnelwalls(g,phys_params)
     Δs = surface_point_spacing(g,phys_params)
-    L = get(phys_params,"wind tunnel length",g.xlim[1][2]-g.xlim[1][1]-4*Δs)
-    H = get(phys_params,"wind tunnel height",g.xlim[2][2]-g.xlim[2][1]-4*Δs)
-    cent = get(phys_params,"wind tunnel center",(0.5*(g.xlim[1][1]+g.xlim[1][2]),0.5*(g.xlim[2][1]+g.xlim[2][2])))
+    haskey(phys_params,"wind tunnel length") || error("No wind tunnel length set")
+    haskey(phys_params,"wind tunnel height") || error("No wind tunnel height set")
+
+    L = phys_params["wind tunnel length"]
+    H = phys_params["wind tunnel height"]
+    cent = get(phys_params,"wind tunnel center",(0.0,0.0))
 
     plate_tb = Plate(L,Δs);
     bl = BodyList([deepcopy(plate_tb),deepcopy(plate_tb)])
-    t1! = RigidTransform((cent[1],H/2),π)
-    t2! = RigidTransform((cent[1],-H/2),0.0)
+    t1! = RigidTransform((cent[1],cent[2]+H/2),π)
+    t2! = RigidTransform((cent[1],cent[2]-H/2),0.0)
     tl! = RigidTransformList([t1!,t2!])
     tl!(bl)
     return bl
+end
+
+function add_sink!(vn,vn_pts,ds,phys_params,sys,t)
+    tstart = get(phys_params,"sink start time",-Inf)
+    tend = get(phys_params,"sink end time",-Inf)
+
+    if tstart ≤ t ≤ tend
+        Q = get(phys_params,"sink strength",0.0)
+        x_c = get(phys_params,"sink position",0.0)
+        L = get(phys_params,"sink width",0.0)
+        N = get(phys_params,"sink points",10)
+        H = phys_params["wind tunnel height"]
+        cent = get(phys_params,"wind tunnel center",(0.0,0.0))
+        y_c = cent[2]+H/2
+
+        dS = L/N
+        sink = Plate(L,dS) # assume sink distribution is horizontal
+        T = RigidTransform((x_c,y_c),0.0)
+        T(sink)
+
+        q_pts = points(sink)
+        q = ScalarData(q_pts)
+
+        q .= Q/L
+
+        line_regularize!(vn,vn_pts,q,q_pts,ds,dS)
+    end
+end
+
+function line_regularize!(vn::ScalarData,vn_pts::VectorData,q::ScalarData,q_pts::VectorData,ds,dS;ddf_radius=1.0,ddf=CartesianGrids.ddf_witchhat)
+    for i in 1:length(q)
+        for j in 1:length(vn)
+            dx = vn_pts.u[j] - q_pts.u[i]
+            dy = vn_pts.v[j] - q_pts.v[i]
+            if abs(dx)/ds < ddf_radius && abs(dy)/ds < ddf_radius
+                dist = sqrt(dx^2 + dy^2)/ds
+                vn[j] += q[i] * ddf(dist) * dS/ds
+            end
+        end
+    end
 end
 
 end # module
