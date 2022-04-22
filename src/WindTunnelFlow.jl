@@ -153,6 +153,7 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     Δs = surface_point_spacing(base_cache.g,phys_params)
     vn_pts = points(extra_cache.wt_sys)
     add_sink!(vnminus,vn_pts,Δs,phys_params,sys,t)
+    add_sink!(vnplus,vn_pts,Δs,phys_params,sys,t)
 
     f, df, s, ds = solve(vnplus,vnminus,extra_cache.wt_sys)
 
