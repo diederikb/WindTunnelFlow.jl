@@ -187,11 +187,18 @@ function create_windtunnelwalls(g,phys_params)
 end
 
 function add_sink!(vn,vn_pts,ds,phys_params,sys,t)
-    tstart = get(phys_params,"sink start time",-Inf)
-    tend = get(phys_params,"sink end time",-Inf)
+    # tstart = get(phys_params,"sink start time",-Inf)
+    # tend = get(phys_params,"sink end time",-Inf)
+    # trise = get(phys_params,"sink rise time",0.0)
+    # tfall = get(phys_params,"sink fall time",0.0)
+    t0 = get(phys_params,"sink time",0.0)
+    σ = get(phys_params,"sink sigma",0.0)
+    Q = get(phys_params,"sink strength",0.0)
 
-    if tstart ≤ t ≤ tend
-        Q = get(phys_params,"sink strength",0.0)
+    g = Gaussian(σ,sqrt(π*σ^2)) >> t0
+
+    if g(t) > 0.0
+        # println(t)
         x_c = get(phys_params,"sink position",0.0)
         L = get(phys_params,"sink width",0.0)
         N = get(phys_params,"sink points",10)
@@ -207,7 +214,7 @@ function add_sink!(vn,vn_pts,ds,phys_params,sys,t)
         q_pts = points(sink)
         q = ScalarData(q_pts)
 
-        q .= Q/L
+        q .= g(t)*Q/L
 
         line_regularize!(vn,vn_pts,q,q_pts,ds,dS)
     end
