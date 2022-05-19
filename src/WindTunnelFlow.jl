@@ -5,7 +5,7 @@ using Reexport
 using UnPack
 using LinearAlgebra
 @reexport using ViscousFlow
-@reexport using ImmersedLayers
+@reexport using GridPotentialFlow
 
 import ViscousFlow: viscousflow_vorticity_bc_rhs!, viscousflow_vorticity_ode_rhs!, velocity!
 
@@ -71,7 +71,7 @@ function ImmersedLayers.prob_cache(prob::WindTunnelProblem,
 
     #============ Wind tunnel correction problem ============#
     wt_walls = create_windtunnelwalls(g,phys_params)
-    wt_prob = NeumannPoissonProblem(g,wt_walls,scaling=GridScaling,phys_params=phys_params)
+    wt_prob = PotentialFlowProblem(g,wt_walls,scaling=GridScaling,phys_params=phys_params)
     wt_sys = construct_system(wt_prob);
 
     wt_bool_surface = ScalarData(points(wt_walls))
@@ -133,7 +133,6 @@ end
 function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{true,T},t) where {T<:WindTunnelProblem}
     @unpack forcing, phys_params, extra_cache, base_cache = sys
     @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel = extra_cache
-    @unpack vnplus, vnminus = extra_cache.wt_sys.extra_cache
 
     prescribed_surface_jump!(dvb,t,sys)
 
@@ -144,24 +143,29 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     fill!(wt_vel,0.0)
     ViscousFlow.velocity!(wt_vel,w,divv_tmp,dvb,base_cache.gdata_cache,base_cache,velcache,w_tmp)
 
+    wt_vn = zeros_surfacescalar(extra_cache.wt_sys)
+    wt_dvn = zeros_surfacescalar(extra_cache.wt_sys)
+    f = zeros_griddiv(extra_cache.wt_sys)
+    df = zeros_surfacescalar(extra_cache.wt_sys)
+    v_df = zeros_grid(sys.extra_cache.wt_sys)
 
-    normal_interpolate!(vnplus,wt_vel,extra_cache.wt_sys)
-    vnplus .*= -1
-    normal_interpolate!(vnminus,wt_vel,extra_cache.wt_sys)
-    vnminus .*= -1
+    normal_interpolate!(wt_vn,wt_vel,extra_cache.wt_sys)
+    wt_vn .*= -1
 
     Δs = surface_point_spacing(base_cache.g,phys_params)
     vn_pts = points(extra_cache.wt_sys)
-    add_sink!(vnminus,vn_pts,Δs,phys_params,sys,t)
-    add_sink!(vnplus,vn_pts,Δs,phys_params,sys,t)
+    add_sink!(wt_vn,vn_pts,Δs,phys_params,sys,t)
 
-    f, df, s, ds = solve(vnplus,vnminus,extra_cache.wt_sys)
+    f, df, s, ds = GridPotentialFlow.scalarpotential!(f,df,wt_vn,wt_dvn,extra_cache.wt_sys,t)
 
+    # Compute Gϕ̄
     grad!(wt_vel,f,sys.extra_cache.wt_sys);
-    v_df = zeros_gridgrad(sys.extra_cache.wt_sys)
+
+    # Eldredge JCP 2022 Eq 39: Ḡϕ̄ = Gϕ̄ - I(ϕ⁺-ϕ⁻)∘Rn
     regularize_normal!(v_df,df,sys.extra_cache.wt_sys)
     wt_vel .-= v_df
 
+    # Add potential flow velocity field to freestream velocity field
     base_cache.gdata_cache .+= wt_vel
 
     fill!(divv_tmp,0.0)
