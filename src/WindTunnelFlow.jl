@@ -7,6 +7,7 @@ using LinearAlgebra
 @reexport using ViscousFlow
 @reexport using GridPotentialFlow
 
+import ImmersedLayers: ConstrainedODEFunction
 import ViscousFlow: viscousflow_vorticity_bc_rhs!, viscousflow_vorticity_ode_rhs!, velocity!, streamfunction!
 
 export create_windtunnelwalls, WindTunnelProblem, corrected_streamfunction!
@@ -15,6 +16,30 @@ export create_windtunnelwalls, WindTunnelProblem, corrected_streamfunction!
 include("NeumannPoisson.jl")
 
 @ilmproblem(WindTunnel,vector)
+
+function ImmersedLayers.ConstrainedODEFunction(sys::ILMSystem{true}) where {T<:WindTunnelProblem}
+    @unpack extra_cache = sys
+    @unpack f = extra_cache
+
+    ImmersedLayers._constrained_ode_function(f.lin_op,f.ode_rhs,f.bc_rhs,f.constraint_force,
+                              f.bc_op;_func_cache=zeros_sol(sys),
+                                      param_update_func=WindTunnelFlow.update_system!)
+    # ImmersedLayers._constrained_ode_function(f.lin_op,f.ode_rhs,f.bc_rhs,f.constraint_force,
+    #                           f.bc_op;_func_cache=zeros_sol(sys))
+end
+
+function update_system!(sys::ILMSystem,u,sysold::ILMSystem,t)
+
+    sys.phys_params = sysold.phys_params
+    sys.bc = sysold.bc
+    sys.forcing = sysold.forcing
+    sys.timestep_func = sysold.timestep_func
+    sys.motions = sysold.motions
+    sys.base_cache = sysold.base_cache
+    sys.extra_cache = sysold.extra_cache
+
+    velocity!(sys.extra_cache.v_tmp,state(u),sys,t)
+end
 
 struct WindTunnelCache{CDT,FRT,DVT,VFT,VORT,DILT,VELT,FCT,WTST,WTBT,WTVT} <: AbstractExtraILMCache
     # ViscousIncompressibleFlow
@@ -33,6 +58,7 @@ struct WindTunnelCache{CDT,FRT,DVT,VFT,VORT,DILT,VELT,FCT,WTST,WTBT,WTVT} <: Abs
     wt_sys :: WTST
     wt_bool :: WTBT
     wt_vel :: WTVT
+    wt_body_bc :: DVT
 end
 
 function ImmersedLayers.prob_cache(prob::WindTunnelProblem,
@@ -85,8 +111,9 @@ function ImmersedLayers.prob_cache(prob::WindTunnelProblem,
     wt_bool .= (wt_bool .!= 0.0);
 
     wt_vel = zeros_grid(base_cache)
+    wt_body_bc = zeros_surface(base_cache)
 
-    WindTunnelCache(cdcache,fcache,dvb,vb_tmp,v_tmp,dv,dv_tmp,w_tmp,divv_tmp,velcache,f,wt_sys,wt_bool,wt_vel)
+    WindTunnelCache(cdcache,fcache,dvb,vb_tmp,v_tmp,dv,dv_tmp,w_tmp,divv_tmp,velcache,f,wt_sys,wt_bool,wt_vel,wt_body_bc)
 end
 
 function ViscousFlow.viscousflow_vorticity_bc_rhs!(vb,sys::ILMSystem{true,T},t) where {T<:WindTunnelProblem}
@@ -111,8 +138,13 @@ function ViscousFlow.viscousflow_vorticity_bc_rhs!(vb,sys::ILMSystem{true,T},t) 
     vb.v .-= Vinf
 
     # Subtract influence of wind tunnel correction
-    interpolate!(vb_tmp,extra_cache.wt_vel,base_cache)
-    vb .-= vb_tmp
+    vb .-= extra_cache.wt_body_bc
+    # vb .-= sys.extra_cache.wt_body_bc
+    # t0 = get(phys_params,"top sink time",0.0)
+    # σ = get(phys_params,"top sink sigma",0.0)
+    # Q = get(phys_params,"top sink strength",0.0)
+    # g = Gaussian(σ,sqrt(π*σ^2)) >> t0
+    # vb.v .-= Q*g(t)
 
     return vb
 end
@@ -132,7 +164,7 @@ end
 
 function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{true,T},t) where {T<:WindTunnelProblem}
     @unpack forcing, phys_params, extra_cache, base_cache = sys
-    @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel = extra_cache
+    @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel, vb_tmp = extra_cache
 
     prescribed_surface_jump!(dvb,t,sys)
 
@@ -162,6 +194,13 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     # Eldredge JCP 2022 Eq 38: Ḡϕ̄ = Gϕ̄ - I(ϕ⁺-ϕ⁻)∘Rn
     regularize_normal!(v_df,df,sys.extra_cache.wt_sys)
     wt_vel .-= v_df
+    interpolate!(extra_cache.wt_body_bc,wt_vel,base_cache)
+
+    # t0 = get(phys_params,"top sink time",0.0)
+    # σ = get(phys_params,"top sink sigma",0.0)
+    # Q = get(phys_params,"top sink strength",0.0)
+    # g = Gaussian(σ,sqrt(π*σ^2)) >> t0
+    # vecfield_uniformvecfield!(wt_vel,0.0,Q*g(t),base_cache)
 
     # Add potential flow velocity field to freestream velocity field
     base_cache.gdata_cache .+= wt_vel
@@ -238,32 +277,40 @@ function add_sink!(vn,sys,t)
     # tend = get(phys_params,"sink end time",-Inf)
     # trise = get(phys_params,"sink rise time",0.0)
     # tfall = get(phys_params,"sink fall time",0.0)
-    t0 = get(phys_params,"sink time",0.0)
-    σ = get(phys_params,"sink sigma",0.0)
-    Q = get(phys_params,"sink strength",0.0)
 
-    g = Gaussian(σ,sqrt(π*σ^2)) >> t0
+    for loc in ["top","bottom"]
+        t0 = get(phys_params,"$loc sink time",0.0)
+        σ = get(phys_params,"$loc sink sigma",0.0)
+        Q = get(phys_params,"$loc sink strength",0.0)
 
-    if g(t) > 0.0
-        # println(t)
-        x_c = get(phys_params,"sink position",0.0)
-        L = get(phys_params,"sink width",0.0)
-        N = get(phys_params,"sink points",10)
-        H = phys_params["wind tunnel height"]
-        cent = get(phys_params,"wind tunnel center",(0.0,0.0))
-        y_c = cent[2]+H/2
+        g = Gaussian(σ,sqrt(π*σ^2)) >> t0
 
-        dS = L/N
-        sink = Plate(L,dS) # assume sink distribution is horizontal
-        T = RigidTransform((x_c,y_c),0.0)
-        T(sink)
+        if g(t) > 0.0 && Q != 0.0
+            # println(t)
+            x_c = get(phys_params,"$loc sink position",0.0)
+            L = get(phys_params,"$loc sink width",0.0)
+            N = get(phys_params,"$loc sink points",10)
+            H = phys_params["wind tunnel height"]
+            cent = get(phys_params,"wind tunnel center",(0.0,0.0))
 
-        q_pts = points(sink)
-        q = ScalarData(q_pts)
+            if loc == "top"
+                y_c = cent[2]+H/2
+            elseif loc == "bottom"
+                y_c = cent[2]-H/2
+            end
+
+            dS = L/N
+            sink = Plate(L,dS) # assume sink distribution is horizontal
+            T = RigidTransform((x_c,y_c),0.0)
+            T(sink)
+
+            q_pts = points(sink)
+            q = ScalarData(q_pts)
 
         q .= -g(t)*Q/L # minus sign because the normals of the walls are pointing to the centerline of the wind tunnel
 
-        line_regularize!(vn,vn_pts,q,q_pts,ds,dS)
+            line_regularize!(vn,vn_pts,q,q_pts,ds,dS)
+        end
     end
 end
 
