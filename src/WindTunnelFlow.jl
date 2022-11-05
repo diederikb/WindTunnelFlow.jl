@@ -156,7 +156,7 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     vn_pts = points(extra_cache.wt_sys)
     add_sink!(wt_vn,vn_pts,Δs,phys_params,sys,t)
 
-    GridPotentialFlow.solve!(f,df,wt_vn,wt_dvn,extra_cache.wt_sys,t)
+    GridPotentialFlow.solve!(f,df,wt_vn,wt_dvn,nothing,extra_cache.wt_sys,t)
 
     # Compute Gϕ̄
     grad!(wt_vel,f,sys.extra_cache.wt_sys);
