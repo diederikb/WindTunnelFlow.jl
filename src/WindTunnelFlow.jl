@@ -17,15 +17,20 @@ include("NeumannPoisson.jl")
 
 @ilmproblem(WindTunnel,vector)
 
-function ImmersedLayers.ConstrainedODEFunction(sys::ILMSystem{true}) where {T<:WindTunnelProblem}
+"""
+When creating the time marching for a `WindTunnelProblem`, include a velocity update in each time-stepping stage such that the boundary conditions are updated.
+"""
+function ImmersedLayers.ConstrainedODEFunction(sys::ILMSystem{true,T}) where {T<:WindTunnelProblem}
     @unpack extra_cache = sys
     @unpack f = extra_cache
 
-    ImmersedLayers._constrained_ode_function(f.lin_op,f.ode_rhs,f.bc_rhs,f.constraint_force,
-                              f.bc_op;_func_cache=zeros_sol(sys),
-                                      param_update_func=WindTunnelFlow.update_system!)
-    # ImmersedLayers._constrained_ode_function(f.lin_op,f.ode_rhs,f.bc_rhs,f.constraint_force,
-    #                           f.bc_op;_func_cache=zeros_sol(sys))
+    ImmersedLayers._constrained_ode_function(f.lin_op,
+                                             f.ode_rhs,
+                                             f.bc_rhs,
+                                             f.constraint_force,
+                                             f.bc_op;
+                                             _func_cache=zeros_sol(sys),
+                                             param_update_func=WindTunnelFlow.update_system!)
 end
 
 function update_system!(sys::ILMSystem,u,sysold::ILMSystem,t)
@@ -123,7 +128,7 @@ function ViscousFlow.viscousflow_vorticity_bc_rhs!(vb,sys::ILMSystem{true,T},t) 
 
     ViscousFlow.viscousflow_velocity_bc_rhs!(vb,sys,t)
 
-    # Subtract influence of scalar potential field
+    # Subtract influence of non-wind-tunnel scalar potential field (coming from the jump in normal velocities on the body)
     fill!(divv_tmp,0.0)
     prescribed_surface_jump!(dvb,t,sys)
     scalarpotential_from_masked_divv!(ϕtemp,divv_tmp,dvb,base_cache,dcache)
@@ -139,12 +144,6 @@ function ViscousFlow.viscousflow_vorticity_bc_rhs!(vb,sys::ILMSystem{true,T},t) 
 
     # Subtract influence of wind tunnel correction
     vb .-= extra_cache.wt_body_bc
-    # vb .-= sys.extra_cache.wt_body_bc
-    # t0 = get(phys_params,"top sink time",0.0)
-    # σ = get(phys_params,"top sink sigma",0.0)
-    # Q = get(phys_params,"top sink strength",0.0)
-    # g = Gaussian(σ,sqrt(π*σ^2)) >> t0
-    # vb.v .-= Q*g(t)
 
     return vb
 end
@@ -157,38 +156,43 @@ function ViscousFlow.viscousflow_vorticity_ode_rhs!(dw,w,sys::ILMSystem{true,T},
     ViscousFlow.viscousflow_velocity_ode_rhs!(dv,v_tmp,sys,t)
     curl!(dw,dv,base_cache)
 
+    # Remove vorticity coming from wind tunnel walls numerical artifacts (such as at the corners)
     dw .-= dw.*wt_bool
 
     return dw
 end
 
+"""
+Note: while most `ViscousFlow` methods are reused, this method differs from the non-parametric `velocity!` method to account for the wind tunnel walls and sinks.
+"""
 function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{true,T},t) where {T<:WindTunnelProblem}
     @unpack forcing, phys_params, extra_cache, base_cache = sys
     @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel, vb_tmp = extra_cache
 
-    prescribed_surface_jump!(dvb,t,sys)
-
+    # Compute the freestream velocity field and store it in gdata_cache
     freestream_func = ViscousFlow.get_freestream_func(forcing)
     Vinf = freestream_func(t,phys_params)
     vecfield_uniformvecfield!(base_cache.gdata_cache,Vinf[1],Vinf[2],base_cache)
 
+    # Compute the uncorrected velocity field from the freestream velocity and vorticity `w` and store it in wt_vel
+    prescribed_surface_jump!(dvb,t,sys)
     fill!(wt_vel,0.0)
     ViscousFlow.velocity!(wt_vel,w,divv_tmp,dvb,base_cache.gdata_cache,base_cache,velcache,w_tmp)
 
+    # Interpolate the velocity onto the wind-tunnel walls and flip its sign
     wt_vn = zeros_surfacescalar(extra_cache.wt_sys)
     wt_dvn = zeros_surfacescalar(extra_cache.wt_sys)
-    f = zeros_griddiv(extra_cache.wt_sys)
-    df = zeros_surfacescalar(extra_cache.wt_sys)
-    v_df = zeros_grid(sys.extra_cache.wt_sys)
-
     normal_interpolate!(wt_vn,wt_vel,extra_cache.wt_sys)
     wt_vn .*= -1
 
     add_sink!(wt_vn,sys,t)
 
+    # Solve Neumann problem for ϕ and dϕ (double layer)
+    f = zeros_griddiv(extra_cache.wt_sys)
+    df = zeros_surfacescalar(extra_cache.wt_sys)
     GridPotentialFlow.solve!(f,df,wt_vn,wt_dvn,nothing,extra_cache.wt_sys,t)
 
-    # Compute Gϕ̄
+    # Compute Gϕ̄ and overwrite wt_vel with the result
     grad!(wt_vel,f,sys.extra_cache.wt_sys);
 
     # Eldredge JCP 2022 Eq 38: Ḡϕ̄ = Gϕ̄ - I(ϕ⁺-ϕ⁻)∘Rn
@@ -196,15 +200,10 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     wt_vel .-= v_df
     interpolate!(extra_cache.wt_body_bc,wt_vel,base_cache)
 
-    # t0 = get(phys_params,"top sink time",0.0)
-    # σ = get(phys_params,"top sink sigma",0.0)
-    # Q = get(phys_params,"top sink strength",0.0)
-    # g = Gaussian(σ,sqrt(π*σ^2)) >> t0
-    # vecfield_uniformvecfield!(wt_vel,0.0,Q*g(t),base_cache)
-
-    # Add potential flow velocity field to freestream velocity field
+    # Add the potential flow velocity field to the freestream velocity field
     base_cache.gdata_cache .+= wt_vel
 
+    # Compute the corrected velocity field from the potential flow velocity, freestream velocity and vorticity `w` and store it in wt_vel. This velocity field will violate the boundary conditions on the body.
     fill!(divv_tmp,0.0)
     ViscousFlow.velocity!(v,w,divv_tmp,dvb,base_cache.gdata_cache,base_cache,velcache,w_tmp)
 end
