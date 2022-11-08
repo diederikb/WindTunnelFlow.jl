@@ -12,9 +12,6 @@ import ViscousFlow: viscousflow_vorticity_bc_rhs!, viscousflow_vorticity_ode_rhs
 
 export create_windtunnelwalls, WindTunnelProblem, corrected_streamfunction!
 
-
-include("NeumannPoisson.jl")
-
 @ilmproblem(WindTunnel,vector)
 
 """
