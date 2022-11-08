@@ -18,7 +18,7 @@ include("NeumannPoisson.jl")
 @ilmproblem(WindTunnel,vector)
 
 """
-When creating the time marching for a `WindTunnelProblem`, include a velocity update in each time-stepping stage such that the boundary conditions are updated.
+When creating the time marching for a `WindTunnelProblem`, include a velocity update in each time-stepping stage such that viscousflow_vorticity_bc_rhs! uses an updated value extra_cache.wt_body_bc. The way it is implemented now is not very clean and should be improved in the future. Its effects should also be analyzed in more detail. Ideally, the coupling between the potential and viscous flow models would be monolithical and this update would not be necessary.
 """
 function ImmersedLayers.ConstrainedODEFunction(sys::ILMSystem{true,T}) where {T<:WindTunnelProblem}
     @unpack extra_cache = sys
@@ -30,7 +30,8 @@ function ImmersedLayers.ConstrainedODEFunction(sys::ILMSystem{true,T}) where {T<
                                              f.constraint_force,
                                              f.bc_op;
                                              _func_cache=zeros_sol(sys),
-                                             param_update_func=WindTunnelFlow.update_system!)
+                                             param_update_func=WindTunnelFlow.update_system!,
+                                             )
 end
 
 function update_system!(sys::ILMSystem,u,sysold::ILMSystem,t)
@@ -196,6 +197,7 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     grad!(wt_vel,f,sys.extra_cache.wt_sys);
 
     # Eldredge JCP 2022 Eq 38: Ḡϕ̄ = Gϕ̄ - I(ϕ⁺-ϕ⁻)∘Rn
+    v_df = zeros_grid(sys.extra_cache.wt_sys)
     regularize_normal!(v_df,df,sys.extra_cache.wt_sys)
     wt_vel .-= v_df
     interpolate!(extra_cache.wt_body_bc,wt_vel,base_cache)
