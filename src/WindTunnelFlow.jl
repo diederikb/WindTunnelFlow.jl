@@ -7,9 +7,9 @@ using LinearAlgebra
 @reexport using ViscousFlow
 @reexport using GridPotentialFlow
 
-import ViscousFlow: viscousflow_vorticity_bc_rhs!, viscousflow_vorticity_ode_rhs!, velocity!
+import ViscousFlow: viscousflow_vorticity_bc_rhs!, viscousflow_vorticity_ode_rhs!, velocity!, streamfunction!
 
-export create_windtunnelwalls, WindTunnelProblem
+export create_windtunnelwalls, WindTunnelProblem, corrected_streamfunction!
 
 
 include("NeumannPoisson.jl")
@@ -152,16 +152,14 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     normal_interpolate!(wt_vn,wt_vel,extra_cache.wt_sys)
     wt_vn .*= -1
 
-    Δs = surface_point_spacing(base_cache.g,phys_params)
-    vn_pts = points(extra_cache.wt_sys)
-    add_sink!(wt_vn,vn_pts,Δs,phys_params,sys,t)
+    add_sink!(wt_vn,sys,t)
 
     GridPotentialFlow.solve!(f,df,wt_vn,wt_dvn,nothing,extra_cache.wt_sys,t)
 
     # Compute Gϕ̄
     grad!(wt_vel,f,sys.extra_cache.wt_sys);
 
-    # Eldredge JCP 2022 Eq 39: Ḡϕ̄ = Gϕ̄ - I(ϕ⁺-ϕ⁻)∘Rn
+    # Eldredge JCP 2022 Eq 38: Ḡϕ̄ = Gϕ̄ - I(ϕ⁺-ϕ⁻)∘Rn
     regularize_normal!(v_df,df,sys.extra_cache.wt_sys)
     wt_vel .-= v_df
 
@@ -170,6 +168,47 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
 
     fill!(divv_tmp,0.0)
     ViscousFlow.velocity!(v,w,divv_tmp,dvb,base_cache.gdata_cache,base_cache,velcache,w_tmp)
+end
+
+"""
+Computes in-place the streamfunction field that accounts for the presence of the wind-tunnel walls.
+"""
+function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSystem{true,T},t;removecorrection=false) where {T<:WindTunnelProblem}
+    @unpack phys_params, forcing, extra_cache, base_cache = sys
+    @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel, velcache = extra_cache
+    @unpack wcache = velcache
+
+    # Same code as ViscousFlow.streamfunction!
+    freestream_func = ViscousFlow.get_freestream_func(forcing)
+    Vinf = freestream_func(t,phys_params)
+
+    ViscousFlow.streamfunction!(ψ,w,Vinf,base_cache,wcache)
+
+    if !removecorrection
+        # Compute uncorrected velocity field
+        wt_vel = zeros_grid(sys)
+        prescribed_surface_jump!(dvb,t,sys)
+        ViscousFlow.velocity!(wt_vel,w,divv_tmp,dvb,Vinf,base_cache,velcache,w_tmp)
+
+        # Compute boundary condition for correcting scalar potential
+        wt_vn = zeros_surfacescalar(extra_cache.wt_sys)
+        wt_dvn = zeros_surfacescalar(extra_cache.wt_sys)
+        normal_interpolate!(wt_vn,wt_vel,extra_cache.wt_sys)
+        wt_vn .*= -1
+        add_sink!(wt_vn,sys,t)
+
+        # Compute scalar potential and its jump on the surface
+        f = zeros_griddiv(extra_cache.wt_sys)
+        df = zeros_surfacescalar(extra_cache.wt_sys)
+        s = zeros_gridcurl(extra_cache.wt_sys)
+        ds = zeros_surfacescalar(extra_cache.wt_sys)
+        GridPotentialFlow.solve!(f,df,wt_vn,wt_dvn,nothing,extra_cache.wt_sys,t)
+
+        # Compute the streamfunction from the jump in scalar potential and normal velocity
+        GridPotentialFlow.solve!(s,ds,df,wt_dvn,sys.extra_cache.wt_sys,t);
+
+        ψ .+= s
+    end
 end
 
 function create_windtunnelwalls(g,phys_params)
@@ -183,14 +222,18 @@ function create_windtunnelwalls(g,phys_params)
 
     plate_tb = Plate(L,Δs);
     bl = BodyList([deepcopy(plate_tb),deepcopy(plate_tb)])
-    t1! = RigidTransform((cent[1],cent[2]+H/2),π)
-    t2! = RigidTransform((cent[1],cent[2]-H/2),0.0)
+    t1! = RigidTransform((cent[1],cent[2]+H/2),0.0)
+    t2! = RigidTransform((cent[1],cent[2]-H/2),π)
     tl! = RigidTransformList([t1!,t2!])
     tl!(bl)
     return bl
 end
 
-function add_sink!(vn,vn_pts,ds,phys_params,sys,t)
+function add_sink!(vn,sys,t)
+    @unpack phys_params, extra_cache, base_cache = sys
+    ds = surface_point_spacing(base_cache.g,phys_params)
+    vn_pts = points(extra_cache.wt_sys)
+
     # tstart = get(phys_params,"sink start time",-Inf)
     # tend = get(phys_params,"sink end time",-Inf)
     # trise = get(phys_params,"sink rise time",0.0)
@@ -218,7 +261,7 @@ function add_sink!(vn,vn_pts,ds,phys_params,sys,t)
         q_pts = points(sink)
         q = ScalarData(q_pts)
 
-        q .= g(t)*Q/L
+        q .= -g(t)*Q/L # minus sign because the normals of the walls are pointing to the centerline of the wind tunnel
 
         line_regularize!(vn,vn_pts,q,q_pts,ds,dS)
     end
