@@ -10,7 +10,7 @@ using LinearAlgebra
 import ImmersedLayers: ConstrainedODEFunction
 import ViscousFlow: viscousflow_vorticity_bc_rhs!, viscousflow_vorticity_ode_rhs!, velocity!, streamfunction!
 
-export create_windtunnelwalls, WindTunnelProblem, corrected_streamfunction!
+export create_windtunnel_boundaries, WindTunnelProblem, corrected_streamfunction!, UniformFlowThrough
 
 @ilmproblem(WindTunnel,vector)
 
@@ -99,13 +99,13 @@ function ImmersedLayers.prob_cache(prob::WindTunnelProblem,
 
 
     #============ Wind tunnel correction problem ============#
-    wt_walls = create_windtunnelwalls(g,phys_params)
-    wt_prob = PotentialFlowProblem(g,wt_walls,scaling=GridScaling,phys_params=phys_params)
+    wt_boundaries = create_windtunnel_boundaries(g,phys_params)
+    wt_prob = PotentialFlowProblem(g,wt_boundaries,scaling=GridScaling,phys_params=phys_params)
     wt_sys = construct_system(wt_prob);
 
-    wt_bool_surface = ScalarData(points(wt_walls))
+    wt_bool_surface = ScalarData(points(wt_boundaries))
 
-    regop = ImmersedLayers._get_regularization(points(wt_walls),areas(wt_walls),base_cache.g, CartesianGrids.Goza,GridScaling)
+    regop = ImmersedLayers._get_regularization(points(wt_boundaries),areas(wt_boundaries),base_cache.g, CartesianGrids.Goza,GridScaling)
     Rcurl = ImmersedLayers._regularization_matrix(regop, wt_bool_surface, zeros_gridcurl(base_cache))
 
     wt_bool = zeros_gridcurl(base_cache)
@@ -177,13 +177,26 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     fill!(wt_vel,0.0)
     ViscousFlow.velocity!(wt_vel,w,divv_tmp,dvb,base_cache.gdata_cache,base_cache,velcache,w_tmp)
 
-    # Interpolate the velocity onto the wind-tunnel walls and flip its sign
+    # Interpolate the velocity onto the wind-tunnel boundaries and flip its sign
     wt_vn = zeros_surfacescalar(extra_cache.wt_sys)
     wt_dvn = zeros_surfacescalar(extra_cache.wt_sys)
     normal_interpolate!(wt_vn,wt_vel,extra_cache.wt_sys)
     wt_vn .*= -1
 
-    add_sink!(wt_vn,sys,t)
+    for inlet in phys_params["inlets"]
+        pts_inlet = points(extra_cache.wt_sys.base_cache.bl[inlet.wt_body])
+        wt_vn_inlet = ScalarData(pts_inlet)
+        add_flow_through!(wt_vn_inlet,pts_inlet,inlet,sys,t)
+        wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,inlet.wt_body)] .+= wt_vn_inlet
+    end
+
+    for outlet in phys_params["outlets"]
+        pts_outlet = points(extra_cache.wt_sys.base_cache.bl[outlet.wt_body])
+        wt_vn_outlet = ScalarData(pts_outlet)
+        add_flow_through!(wt_vn_outlet,pts_outlet,outlet,sys,t)
+        wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+        # wt_dvn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+    end
 
     # Solve Neumann problem for ϕ and dϕ (double layer)
     f = zeros_griddiv(extra_cache.wt_sys)
@@ -205,12 +218,13 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     # Compute the corrected velocity field from the potential flow velocity, freestream velocity and vorticity `w` and store it in wt_vel. This velocity field will violate the boundary conditions on the body.
     fill!(divv_tmp,0.0)
     ViscousFlow.velocity!(v,w,divv_tmp,dvb,base_cache.gdata_cache,base_cache,velcache,w_tmp)
+    return wt_vn, wt_dvn
 end
 
 """
 Computes in-place the streamfunction field that accounts for the presence of the wind-tunnel walls.
 """
-function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSystem{true,T},t;removecorrection=false) where {T<:WindTunnelProblem}
+function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSystem{true,T},t;withcorrection=true) where {T<:WindTunnelProblem}
     @unpack phys_params, forcing, extra_cache, base_cache = sys
     @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel, velcache = extra_cache
     @unpack wcache = velcache
@@ -221,7 +235,7 @@ function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSyst
 
     ViscousFlow.streamfunction!(ψ,w,Vinf,base_cache,wcache)
 
-    if !removecorrection
+    if withcorrection
         # Compute uncorrected velocity field
         wt_vel = zeros_grid(sys)
         prescribed_surface_jump!(dvb,t,sys)
@@ -232,7 +246,21 @@ function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSyst
         wt_dvn = zeros_surfacescalar(extra_cache.wt_sys)
         normal_interpolate!(wt_vn,wt_vel,extra_cache.wt_sys)
         wt_vn .*= -1
-        add_sink!(wt_vn,sys,t)
+
+        for inlet in phys_params["inlets"]
+            pts_inlet = points(extra_cache.wt_sys.base_cache.bl[inlet.wt_body])
+            wt_vn_inlet = ScalarData(pts_inlet)
+            add_flow_through!(wt_vn_inlet,pts_inlet,inlet,sys,t)
+            wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,inlet.wt_body)] .+= wt_vn_inlet
+        end
+
+        for outlet in phys_params["outlets"]
+            pts_outlet = points(extra_cache.wt_sys.base_cache.bl[outlet.wt_body])
+            wt_vn_outlet = ScalarData(pts_outlet)
+            add_flow_through!(wt_vn_outlet,pts_outlet,outlet,sys,t)
+            wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+            # wt_dvn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+        end
 
         # Compute scalar potential and its jump on the surface
         f = zeros_griddiv(extra_cache.wt_sys)
@@ -248,7 +276,16 @@ function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSyst
     end
 end
 
-function create_windtunnelwalls(g,phys_params)
+"""
+Creates the boundaries of the wind tunnel where boundary conditions will be imposed for the correcting potential flow.
+
+Returns a `BodyList` with elements:
+
+    1. top boundary
+    2. bottom boundary
+    3. inlet boundary
+"""
+function create_windtunnel_boundaries(g,phys_params,withinlet=true)
     Δs = surface_point_spacing(g,phys_params)
     haskey(phys_params,"wind tunnel length") || error("No wind tunnel length set")
     haskey(phys_params,"wind tunnel height") || error("No wind tunnel height set")
@@ -263,53 +300,34 @@ function create_windtunnelwalls(g,phys_params)
     t2! = RigidTransform((cent[1],cent[2]-H/2),π)
     tl! = RigidTransformList([t1!,t2!])
     tl!(bl)
+
+    if withinlet
+        inlet = Plate(H,Δs)
+        RigidTransform((cent[1]-L/2,cent[2]),π/2)(inlet)
+        push!(bl,inlet)
+    end
+
     return bl
 end
 
-function add_sink!(vn,sys,t)
+struct UniformFlowThrough
+    boundary :: Body
+    velocity :: Function # per unit length. If the normals of the boundary point to the interior of the wind tunnel, a positive strength gives inflow and a negative strength gives outflow
+    wt_body :: Int # body of the wind tunnel walls on with the uniform flow through has to be applied exclusively
+    pts :: VectorData
+    scalar_cache :: ScalarData
+end
+
+UniformFlowThrough(boundary, velocity, wt_body) = UniformFlowThrough(boundary, velocity, wt_body, points(boundary), ScalarData(points(boundary)))
+
+function add_flow_through!(vn,vn_pts,flow,sys,t)
     @unpack phys_params, extra_cache, base_cache = sys
     ds = surface_point_spacing(base_cache.g,phys_params)
-    vn_pts = points(extra_cache.wt_sys)
 
-    # tstart = get(phys_params,"sink start time",-Inf)
-    # tend = get(phys_params,"sink end time",-Inf)
-    # trise = get(phys_params,"sink rise time",0.0)
-    # tfall = get(phys_params,"sink fall time",0.0)
+    dS = dlength(flow.boundary)[1] # Should change to using the full ds vector
+    flow.scalar_cache .= flow.velocity(t,phys_params)
 
-    for loc in ["top","bottom"]
-        t0 = get(phys_params,"$loc sink time",0.0)
-        σ = get(phys_params,"$loc sink sigma",0.0)
-        Q = get(phys_params,"$loc sink strength",0.0)
-
-        g = Gaussian(σ,sqrt(π*σ^2)) >> t0
-
-        if g(t) > 0.0 && Q != 0.0
-            # println(t)
-            x_c = get(phys_params,"$loc sink position",0.0)
-            L = get(phys_params,"$loc sink width",0.0)
-            N = get(phys_params,"$loc sink points",10)
-            H = phys_params["wind tunnel height"]
-            cent = get(phys_params,"wind tunnel center",(0.0,0.0))
-
-            if loc == "top"
-                y_c = cent[2]+H/2
-            elseif loc == "bottom"
-                y_c = cent[2]-H/2
-            end
-
-            dS = L/N
-            sink = Plate(L,dS) # assume sink distribution is horizontal
-            T = RigidTransform((x_c,y_c),0.0)
-            T(sink)
-
-            q_pts = points(sink)
-            q = ScalarData(q_pts)
-
-        q .= -g(t)*Q/L # minus sign because the normals of the walls are pointing to the centerline of the wind tunnel
-
-            line_regularize!(vn,vn_pts,q,q_pts,ds,dS)
-        end
-    end
+    line_regularize!(vn,vn_pts,flow.scalar_cache,flow.pts,ds,dS)
 end
 
 function line_regularize!(vn::ScalarData,vn_pts::VectorData,q::ScalarData,q_pts::VectorData,ds,dS;ddf_radius=1.0,ddf=CartesianGrids.ddf_witchhat)
