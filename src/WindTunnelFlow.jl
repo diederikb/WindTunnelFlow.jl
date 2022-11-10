@@ -99,7 +99,14 @@ function ImmersedLayers.prob_cache(prob::WindTunnelProblem,
 
 
     #============ Wind tunnel correction problem ============#
-    wt_boundaries = create_windtunnel_boundaries(g,phys_params)
+    hasinlet = false
+    if haskey(phys_params, "inlets")
+        if !isempty(phys_params["inlets"])
+            hasinlet = true
+        end
+    end
+
+    wt_boundaries = create_windtunnel_boundaries(g,phys_params;withinlet=hasinlet)
     wt_prob = PotentialFlowProblem(g,wt_boundaries,scaling=GridScaling,phys_params=phys_params)
     wt_sys = construct_system(wt_prob);
 
@@ -218,6 +225,7 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     # Compute the corrected velocity field from the potential flow velocity, freestream velocity and vorticity `w` and store it in wt_vel. This velocity field will violate the boundary conditions on the body.
     fill!(divv_tmp,0.0)
     ViscousFlow.velocity!(v,w,divv_tmp,dvb,base_cache.gdata_cache,base_cache,velcache,w_tmp)
+    return wt_vn, wt_dvn
 end
 
 """
@@ -284,7 +292,7 @@ Returns a `BodyList` with elements:
     2. bottom boundary
     3. inlet boundary
 """
-function create_windtunnel_boundaries(g,phys_params,withinlet=true)
+function create_windtunnel_boundaries(g,phys_params;withinlet=true)
     Δs = surface_point_spacing(g,phys_params)
     haskey(phys_params,"wind tunnel length") || error("No wind tunnel length set")
     haskey(phys_params,"wind tunnel height") || error("No wind tunnel height set")
@@ -311,20 +319,20 @@ end
 
 struct UniformFlowThrough
     boundary :: Body
-    velocity :: Function # per unit length. If the normals of the boundary point to the interior of the wind tunnel, a positive strength gives inflow and a negative strength gives outflow
+    set_velocity! :: Function # per unit length. If the normals of the boundary point to the interior of the wind tunnel, a positive strength gives inflow and a negative strength gives outflow
     wt_body :: Int # body of the wind tunnel walls on with the uniform flow through has to be applied exclusively
     pts :: VectorData
     scalar_cache :: ScalarData
 end
 
-UniformFlowThrough(boundary, velocity, wt_body) = UniformFlowThrough(boundary, velocity, wt_body, points(boundary), ScalarData(points(boundary)))
+UniformFlowThrough(boundary, set_velocity!, wt_body) = UniformFlowThrough(boundary, set_velocity!, wt_body, points(boundary), ScalarData(points(boundary)))
 
 function add_flow_through!(vn,vn_pts,flow,sys,t)
     @unpack phys_params, extra_cache, base_cache = sys
     ds = surface_point_spacing(base_cache.g,phys_params)
 
     dS = dlength(flow.boundary)[1] # Should change to using the full ds vector
-    flow.scalar_cache .= flow.velocity(t,phys_params)
+    flow.set_velocity!(flow.scalar_cache,flow.pts,t,phys_params)
 
     line_regularize!(vn,vn_pts,flow.scalar_cache,flow.pts,ds,dS)
 end
