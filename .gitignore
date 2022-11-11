@@ -23,4 +23,5 @@ literatedrafts/
 
 examples/*.txt
 examples/*.gif
-examples/wt_data
+examples/*.pdf
+examples/notebooks_spring_2022

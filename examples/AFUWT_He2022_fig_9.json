@@ -1,0 +1,11 @@
+{
+  "case": "AFUWT_He2022_fig_9",
+  "H_TS": 0.61,
+  "W_TS": 0.61,
+  "L_TS": 2.1,
+  "u_0": 2.0,
+  "V_in_over_u_0": 1.17,
+  "V_TS_over_u_0": 0.85,
+  "x_SD_lo_over_L_TS": 0.4,
+  "x_SD_hi_over_L_TS": 0.6
+}
