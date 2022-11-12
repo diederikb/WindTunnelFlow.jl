@@ -1,0 +1,16 @@
+{
+  "case": "AFUWT_NACA_0009_gaussian_suction",
+  "H_TS": 0.61,
+  "W_TS": 0.61,
+  "L_TS": 2.1,
+  "c": 0.245,
+  "Re": 100.0,
+  "alpha": 0.0,
+  "t_final": 15.0,
+  "Q_SD_over_Q_in": 0.85,
+  "x_SD_lo_over_L_TS": 0.4,
+  "x_SD_hi_over_L_TS": 0.6,
+  "t_suction": 10.0,
+  "sigma_suction": 0.2,
+  "grid_Re": 2.0
+}
