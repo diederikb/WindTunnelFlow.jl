@@ -8,5 +8,5 @@
   "V_TS_over_u_0": 0.85,
   "x_SD_lo_over_L_TS": 0.4,
   "x_SD_hi_over_L_TS": 0.6,
-  "grid_Re": 6.0,
+  "grid_Re": 6.0
 }
