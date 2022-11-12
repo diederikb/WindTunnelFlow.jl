@@ -2,12 +2,12 @@ using WindTunnelFlow
 using JSON
 using Plots
 
-function outflow_velocity(vel,pts,t,phys_params)
+function suction_velocity!(vel,pts,t,phys_params)
     V_out = phys_params["V_out"]
     vel .= -V_out
 end
 
-function inflow_velocity(vel,pts,t,phys_params)
+function inflow_velocity!(vel,pts,t,phys_params)
     V_in = phys_params["V_in"]
     vel .= V_in
 end
@@ -24,6 +24,7 @@ V_in_over_u_0 = parsed_inputs["V_in_over_u_0"] # He 2022, figure 9
 V_TS_over_u_0 = parsed_inputs["V_TS_over_u_0"] # He 2022, figure 9
 x_SD_lo_over_L_TS = parsed_inputs["x_SD_lo_over_L_TS"]
 x_SD_hi_over_L_TS = parsed_inputs["x_SD_hi_over_L_TS"]
+grid_Re = get(parsed_inputs,"grid_Re",2.0)
 
 # Compute other wind tunnel parameters
 V_in = V_in_over_u_0 * u_0
@@ -42,7 +43,7 @@ V_out = Q_SD / A_SD
 
 params = Dict()
 params["Re"] = 200
-params["grid Re"] = 2.0
+params["grid Re"] = grid_Re
 params["wind tunnel length"] = L_TS
 params["wind tunnel height"] = H_TS
 params["wind tunnel center"] = (L_TS / 2, H_TS / 2)
@@ -62,19 +63,19 @@ inflow_boundary = BasicBody(
     zeros(N),
     collect(range(0, H_TS, N)),
     closuretype=RigidBodyTools.OpenBody)
-inflow = UniformFlowThrough(inflow_boundary,inflow_velocity,3)
+inflow = UniformFlowThrough(inflow_boundary,inflow_velocity!,3)
 
 params["inlets"] = [inflow]
 
 # Create the suction at the top of the wind tunnel
 N = ceil(Int, L_SD / surface_point_spacing(g,params))
-outflow_boundary = BasicBody(
+suction_boundary = BasicBody(
     collect(range(x_SD_lo, x_SD_hi, N)),
     H_TS * ones(N);
     closuretype=RigidBodyTools.OpenBody)
-outflow = UniformFlowThrough(outflow_boundary,outflow_velocity,1)
+suction = UniformFlowThrough(suction_boundary,suction_velocity!,1)
 
-params["outlets"] = [outflow]
+params["outlets"] = [suction]
 
 # Create the wind tunnel problem
 prob = WindTunnelProblem(g,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
@@ -101,7 +102,7 @@ savefig("$(case)_streamfunction.pdf")
 wt_vel = zeros_grid(sys);
 freestream_func = ViscousFlow.get_freestream_func(sys.forcing)
 Vinf = freestream_func(0.0,params)
-wt_vn, wt_dvn = ViscousFlow.velocity!(wt_vel, zeros_gridcurl(sys), sys, 0.1);
+ViscousFlow.velocity!(wt_vel, zeros_gridcurl(sys), sys, 0.1);
 vel_fcn = interpolatable_field(wt_vel,g);
 
 x_centerline = -0.1*L_TS:0.01:1.1*L_TS
