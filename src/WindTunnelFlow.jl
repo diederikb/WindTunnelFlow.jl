@@ -185,38 +185,40 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     ViscousFlow.velocity!(wt_vel,w,divv_tmp,dvb,base_cache.gdata_cache,base_cache,velcache,w_tmp)
 
     # Interpolate the velocity onto the wind-tunnel boundaries and flip its sign
-    wt_vn = zeros_surfacescalar(extra_cache.wt_sys)
-    wt_dvn = zeros_surfacescalar(extra_cache.wt_sys)
+    wt_vn = extra_cache.wt_sys.extra_cache.helmcache.dcache.vn
+    wt_dvn = extra_cache.wt_sys.extra_cache.helmcache.dcache.dvn
     normal_interpolate!(wt_vn,wt_vel,extra_cache.wt_sys)
     wt_vn .*= -1
 
-    for inlet in phys_params["inlets"]
-        pts_inlet = points(extra_cache.wt_sys.base_cache.bl[inlet.wt_body])
-        wt_vn_inlet = ScalarData(pts_inlet)
-        add_flow_through!(wt_vn_inlet,pts_inlet,inlet,sys,t)
-        wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,inlet.wt_body)] .+= wt_vn_inlet
+    if haskey(phys_params, "inlets")
+        for inlet in phys_params["inlets"]
+            pts_inlet = points(extra_cache.wt_sys.base_cache.bl[inlet.wt_body])
+            wt_vn_inlet = ScalarData(pts_inlet)
+            add_flow_through!(wt_vn_inlet,pts_inlet,inlet,sys,t)
+            wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,inlet.wt_body)] .+= wt_vn_inlet
+        end
     end
 
-    for outlet in phys_params["outlets"]
-        pts_outlet = points(extra_cache.wt_sys.base_cache.bl[outlet.wt_body])
-        wt_vn_outlet = ScalarData(pts_outlet)
-        add_flow_through!(wt_vn_outlet,pts_outlet,outlet,sys,t)
-        wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
-        # wt_dvn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+    if haskey(phys_params, "outlets")
+        for outlet in phys_params["outlets"]
+            pts_outlet = points(extra_cache.wt_sys.base_cache.bl[outlet.wt_body])
+            wt_vn_outlet = ScalarData(pts_outlet)
+            add_flow_through!(wt_vn_outlet,pts_outlet,outlet,sys,t)
+            wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+            # wt_dvn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+        end
     end
 
     # Solve Neumann problem for ϕ and dϕ (double layer)
-    f = zeros_griddiv(extra_cache.wt_sys)
-    df = zeros_surfacescalar(extra_cache.wt_sys)
-    GridPotentialFlow.solve!(f,df,wt_vn,wt_dvn,nothing,extra_cache.wt_sys,t)
+    dϕtemp = sys.extra_cache.wt_sys.extra_cache.dϕtemp
+    GridPotentialFlow.solve!(velcache.ϕtemp,dϕtemp,wt_vn,wt_dvn,nothing,extra_cache.wt_sys,t)
 
     # Compute Gϕ̄ and overwrite wt_vel with the result
-    grad!(wt_vel,f,sys.extra_cache.wt_sys);
+    grad!(wt_vel,velcache.ϕtemp,sys.extra_cache.wt_sys);
 
     # Eldredge JCP 2022 Eq 38: Ḡϕ̄ = Gϕ̄ - I(ϕ⁺-ϕ⁻)∘Rn
-    v_df = zeros_grid(sys.extra_cache.wt_sys)
-    regularize_normal!(v_df,df,sys.extra_cache.wt_sys)
-    wt_vel .-= v_df
+    regularize_normal!(velcache.vϕ,dϕtemp,sys.extra_cache.wt_sys)
+    wt_vel .-= velcache.vϕ
     interpolate!(extra_cache.wt_body_bc,wt_vel,base_cache)
 
     # Add the potential flow velocity field to the freestream velocity field
@@ -225,7 +227,6 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     # Compute the corrected velocity field from the potential flow velocity, freestream velocity and vorticity `w` and store it in wt_vel. This velocity field will violate the boundary conditions on the body.
     fill!(divv_tmp,0.0)
     ViscousFlow.velocity!(v,w,divv_tmp,dvb,base_cache.gdata_cache,base_cache,velcache,w_tmp)
-    return wt_vn, wt_dvn
 end
 
 """
@@ -244,42 +245,43 @@ function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSyst
 
     if withcorrection
         # Compute uncorrected velocity field
-        wt_vel = zeros_grid(sys)
         prescribed_surface_jump!(dvb,t,sys)
         ViscousFlow.velocity!(wt_vel,w,divv_tmp,dvb,Vinf,base_cache,velcache,w_tmp)
 
         # Compute boundary condition for correcting scalar potential
-        wt_vn = zeros_surfacescalar(extra_cache.wt_sys)
-        wt_dvn = zeros_surfacescalar(extra_cache.wt_sys)
+        wt_vn = extra_cache.wt_sys.extra_cache.helmcache.dcache.vn
+        wt_dvn = extra_cache.wt_sys.extra_cache.helmcache.dcache.dvn
         normal_interpolate!(wt_vn,wt_vel,extra_cache.wt_sys)
         wt_vn .*= -1
 
-        for inlet in phys_params["inlets"]
-            pts_inlet = points(extra_cache.wt_sys.base_cache.bl[inlet.wt_body])
-            wt_vn_inlet = ScalarData(pts_inlet)
-            add_flow_through!(wt_vn_inlet,pts_inlet,inlet,sys,t)
-            wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,inlet.wt_body)] .+= wt_vn_inlet
+        if haskey(phys_params, "inlets")
+            for inlet in phys_params["inlets"]
+                pts_inlet = points(extra_cache.wt_sys.base_cache.bl[inlet.wt_body])
+                wt_vn_inlet = ScalarData(pts_inlet)
+                add_flow_through!(wt_vn_inlet,pts_inlet,inlet,sys,t)
+                wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,inlet.wt_body)] .+= wt_vn_inlet
+            end
         end
 
-        for outlet in phys_params["outlets"]
-            pts_outlet = points(extra_cache.wt_sys.base_cache.bl[outlet.wt_body])
-            wt_vn_outlet = ScalarData(pts_outlet)
-            add_flow_through!(wt_vn_outlet,pts_outlet,outlet,sys,t)
-            wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
-            # wt_dvn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+        if haskey(phys_params, "outlets")
+            for outlet in phys_params["outlets"]
+                pts_outlet = points(extra_cache.wt_sys.base_cache.bl[outlet.wt_body])
+                wt_vn_outlet = ScalarData(pts_outlet)
+                add_flow_through!(wt_vn_outlet,pts_outlet,outlet,sys,t)
+                wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+                # wt_dvn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
+            end
         end
 
         # Compute scalar potential and its jump on the surface
-        f = zeros_griddiv(extra_cache.wt_sys)
-        df = zeros_surfacescalar(extra_cache.wt_sys)
-        s = zeros_gridcurl(extra_cache.wt_sys)
-        ds = zeros_surfacescalar(extra_cache.wt_sys)
-        GridPotentialFlow.solve!(f,df,wt_vn,wt_dvn,nothing,extra_cache.wt_sys,t)
+        dϕtemp = sys.extra_cache.wt_sys.extra_cache.dϕtemp
+        dψtemp = sys.extra_cache.wt_sys.extra_cache.γtemp
+        GridPotentialFlow.solve!(velcache.ϕtemp,dϕtemp,wt_vn,wt_dvn,nothing,extra_cache.wt_sys,t)
 
         # Compute the streamfunction from the jump in scalar potential and normal velocity
-        GridPotentialFlow.solve!(s,ds,df,wt_dvn,sys.extra_cache.wt_sys,t);
+        GridPotentialFlow.solve!(velcache.ψtemp,dψtemp,dϕtemp,wt_dvn,sys.extra_cache.wt_sys,t);
 
-        ψ .+= s
+        ψ .+= velcache.ψtemp
     end
 end
 
