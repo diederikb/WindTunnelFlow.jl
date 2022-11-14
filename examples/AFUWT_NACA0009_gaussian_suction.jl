@@ -3,6 +3,8 @@ using JSON
 using DelimitedFiles
 using Plots
 
+ENV["GKSwstype"]="nul"
+
 function suction_velocity!(vel,pts,t,phys_params)
     V_out = phys_params["V_SD"]
     σ = phys_params["sigma_suction"]
@@ -72,6 +74,8 @@ xlim = (-0.05 * L_TS_star + x_O_WT_star, 1.05 * L_TS_star + x_O_WT_star)
 ylim = (-0.05 * H_TS_star + y_O_WT_star, 1.05 * H_TS_star + y_O_WT_star)
 g = setup_grid(xlim, ylim, params)
 
+println(g)
+
 # Airfoil in the test section
 Δs = surface_point_spacing(g,params)
 airfoil = NACA4(0.0, 0.0, 0.09, 300, len=c_star)
@@ -120,7 +124,7 @@ print("Running solver...\n")
 for (u,t) in tuples(integrator)
     @show t
 end
-print("Solver finished")
+print("Solver finished\n")
 
 # Compute force
 sol = integrator.sol;
@@ -169,11 +173,12 @@ anim = @animate for i in 1:anim_sample_step:length(sol.t)
 end
 gif(anim, "$(case).gif", fps=anim_fps)
 
-
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
+print("Creating probe WindTunnelProblem... ")
 probe_prob = WindTunnelProblem(g,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
                                    bc=ViscousFlow.get_bc_func(nothing))
 probe_sys = construct_system(probe_prob);
+print("done\n")
 
 center = (L_TS_star / 2 + x_O_WT_star, H_TS_star / 2 + y_O_WT_star)
 LE = (center[1] - 1/2*cos(α*π/180), center[2] + 1/2*sin(α*π/180))
@@ -189,6 +194,7 @@ VTE_hist = Vector()
 
 wt_vel = zeros_grid(sys);
 
+print("Probing velocity...")
 for i in 1:length(sol.t)
     ViscousFlow.velocity!(wt_vel, zeros_gridcurl(sys), sys, sol.t[i]);
     vel_fcn = interpolatable_field(wt_vel,g);
@@ -201,6 +207,7 @@ for i in 1:length(sol.t)
     push!(VLE_hist,vel_fcn[2](LE[1],LE[2]))
     push!(VTE_hist,vel_fcn[2](TE[1],TE[2]))
 end
+print("done\n")
 
 open("$(case)_Q_and_V_probe.txt", "w") do io
     writedlm(io, [sol.t Q_suction/Q_in_star ULE_hist Umid_hist UTE_hist VLE_hist Vmid_hist VTE_hist])
@@ -215,6 +222,10 @@ plot(integrator.sol.t,Vmid_hist,label="V mid-chord",xlabel="convective time")
 plot!(integrator.sol.t,VLE_hist,label="V LE")
 plot!(integrator.sol.t,VTE_hist,label="V TE")
 savefig("$(case)_V_probe_history.pdf")
+
+# Clear some memory
+probe_sys = nothing
+integrator = nothing
 
 function gaussian_freestream(t,phys_params)
     Uinf = get(phys_params,"freestream speed",0.0)
@@ -232,7 +243,7 @@ forcing_dict = Dict("freestream" => gaussian_freestream)
 
 # ViscousFlow.jl simulation
 print("Creating ViscousIncompressibleFlowProblem... ")
-viscous_prob = ViscousIncompressibleFlowProblem(g,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
+viscous_prob = ViscousIncompressibleFlowProblem(g,airfoil,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
                                    bc=ViscousFlow.get_bc_func(nothing),forcing=forcing_dict)
 viscous_sys = construct_system(viscous_prob);
 print("done\n")
@@ -251,7 +262,7 @@ print("Running solver...\n")
 for (u,t) in tuples(integrator)
     @show t
 end
-print("Solver finished")
+print("Solver finished\n")
 
 # Compute force
 sol = integrator.sol;
@@ -285,10 +296,10 @@ fy_wagner = Vector()
 for i in 1:length(integrator.sol.t)-1
     ḣ = -Vmid_hist[i+1]
     ḧ = (ḣ-ḣ_old)/Δt_hist[i]
-    ḣ_old = ḣ
+    global ḣ_old = ḣ
     Γb = π*c_star*ḣ
     Γ̇b = (Γb-Γb_old)/Δt_hist[i]
-    Γb_old = Γb
+    global Γb_old = Γb
 
     push!(Γ̇b_hist,Γ̇b)
 
