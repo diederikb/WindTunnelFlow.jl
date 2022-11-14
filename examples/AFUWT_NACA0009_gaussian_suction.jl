@@ -57,15 +57,15 @@ x_O_WT_star = -L_TS_star/2 # x-coordinate of the wind tunnel frame origin using 
 y_O_WT_star = -H_TS_star/2 # y-coordinate of the wind tunnel frame origin using the center of the body as the origin
 
 params = Dict()
-params["Re"] = 400
-params["grid Re"] = 6.0
+params["Re"] = Re
+params["grid Re"] = grid_Re
 params["wind tunnel length"] = L_TS_star
 params["wind tunnel height"] = H_TS_star
 params["wind tunnel center"] = (L_TS_star / 2 + x_O_WT_star, H_TS_star / 2 + y_O_WT_star)
 params["freestream speed"] = V_in_star
 params["freestream angle"] = 0.0
-params["sigma_suction"] = 0.2
-params["t_suction"] = 3.0
+params["sigma_suction"] = sigma_suction
+params["t_suction"] = t_suction
 params["V_in"] = V_in_star
 params["V_SD"] = V_SD_star
 xlim = (-0.05 * L_TS_star + x_O_WT_star, 1.05 * L_TS_star + x_O_WT_star)
@@ -73,7 +73,6 @@ ylim = (-0.05 * H_TS_star + y_O_WT_star, 1.05 * H_TS_star + y_O_WT_star)
 g = setup_grid(xlim, ylim, params)
 
 # Airfoil in the test section
-
 Δs = surface_point_spacing(g,params)
 airfoil = NACA4(0.0, 0.0, 0.09, 300, len=c_star)
 airfoil = SplinedBody(airfoil.x, airfoil.y, Δs)
@@ -101,17 +100,27 @@ suction = UniformFlowThrough(suction_boundary,suction_velocity!,1)
 params["outlets"] = [suction]
 
 # Create the wind tunnel problem
+print("Creating WindTunnelProblem... ")
 prob = WindTunnelProblem(g,airfoil,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
                                    bc=ViscousFlow.get_bc_func(nothing))
 sys = construct_system(prob);
+print("done\n")
 
 # Initialize the solution and integrator
+print("Initializing solution... ")
 u0 = init_sol(sys)
+print("done\n")
 tspan = (0.0,t_final)
-integrator = init(u0,tspan,sys);
+print("Initializing integrator... ")
+integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1));
+print("done\n")
 
 # Run
-step!(integrator,t_final)
+print("Running solver...\n")
+for (u,t) in tuples(integrator)
+    @show t
+end
+print("Solver finished")
 
 # Compute force
 sol = integrator.sol;
@@ -222,22 +231,31 @@ params["V_mid"] = maximum(Vmid_hist)
 forcing_dict = Dict("freestream" => gaussian_freestream)
 
 # ViscousFlow.jl simulation
-
-prob = WindTunnelProblem(g,airfoil,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
-                                   bc=ViscousFlow.get_bc_func(nothing))
-sys = construct_system(prob);
+print("Creating ViscousIncompressibleFlowProblem... ")
+viscous_prob = ViscousIncompressibleFlowProblem(g,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
+                                   bc=ViscousFlow.get_bc_func(nothing),forcing=forcing_dict)
+viscous_sys = construct_system(viscous_prob);
+print("done\n")
 
 # Initialize the solution and integrator
-u0 = init_sol(sys)
+print("Initializing solution... ")
+u0 = init_sol(viscous_sys)
+print("done\n")
 tspan = (0.0,t_final)
-integrator = init(u0,tspan,sys);
+print("Initializing integrator... ")
+integrator = init(u0,tspan,viscous_sys);
+print("done\n")
 
 # Run
-step!(integrator,t_final)
+print("Running solver...\n")
+for (u,t) in tuples(integrator)
+    @show t
+end
+print("Solver finished")
 
 # Compute force
 sol = integrator.sol;
-fx_viscous, fy_viscous = force(sol,sys,1)
+fx_viscous, fy_viscous = force(sol,viscous_sys,1)
 
 # Write output
 open("$(case)_force_no_wind_tunnel.txt", "w") do io
