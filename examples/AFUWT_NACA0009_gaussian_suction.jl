@@ -171,7 +171,20 @@ anim = @animate for i in 1:anim_sample_step:length(sol.t)
 #     plot(p1,p2,p3,layout = l,size=(1000,300),margin=4mm)
     plot(p1,p2,p3, layout=Plots.grid(3, 1, heights=[0.4 ,0.15, 0.45]),size=(600,670))
 end
-gif(anim, "$(case).gif", fps=anim_fps)
+gif(anim, "$(case)_vorticity_Qratio_CL.gif", fps=anim_fps)
+
+anim = @animate for i in 1:anim_sample_step:length(sol.t)
+#     l = @layout [a{0.6w} [Plots.grid(2,1)]]
+    ViscousFlow.streamfunction!(ψ,sol.u[i].x[1],sys,sol.t[i])
+    ψ_fcn = interpolatable_field(ψ,g)
+    ψ_probe = ψ_fcn.(x_O_WT_star,y_probe)
+    plot(ψ,sys,c=:gray,levels=ψ_probe,title="t = $(round(integrator.sol.t[i]; digits=1))",xlabel="\$x/c\$",ylabel="\$y/c\$",clim=(-10,10))
+    plot!(sol.u[i].x[1],sys,clim=(-15,15),color=cgrad(:RdBu, rev = true),levels=range(-15,15,length=30))
+    plot!(wt_walls,xlim=xlim,ylim=ylim,lc=:black,lw=2)
+    plot!(suction.boundary,lc=:red,lw=2)
+    plot!(airfoil,fc=:white,lc=:black)
+end
+gif(anim, "$(case)_vorticity.gif", fps=anim_fps)
 
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
 print("Creating probe WindTunnelProblem... ")
