@@ -6,11 +6,11 @@
   "c": 0.245,
   "Re": 400.0,
   "alpha": 0.0,
-  "t_final": 5.0,
+  "t_final": 15.0,
   "Q_SD_over_Q_in": 0.85,
   "x_SD_lo_over_L_TS": 0.4,
   "x_SD_hi_over_L_TS": 0.6,
-  "t_suction": 2.5,
+  "t_suction": 10,
   "sigma_suction": 0.2,
   "grid_Re": 6.0
 }
