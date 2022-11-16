@@ -3,6 +3,8 @@ using JSON
 using DelimitedFiles
 using Plots
 
+println("Number of Julia threads: $(Threads.threads())")
+
 ENV["GKSwstype"]="nul"
 
 function suction_velocity!(vel,pts,t,phys_params)
@@ -105,26 +107,34 @@ params["outlets"] = [suction]
 
 # Create the wind tunnel problem
 print("Creating WindTunnelProblem... ")
+flush(stdout)
 prob = WindTunnelProblem(g,airfoil,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
                                    bc=ViscousFlow.get_bc_func(nothing))
 sys = construct_system(prob);
 print("done\n")
+flush(stdout)
 
 # Initialize the solution and integrator
 print("Initializing solution... ")
 u0 = init_sol(sys)
 print("done\n")
+flush(stdout)
 tspan = (0.0,t_final)
 print("Initializing integrator... ")
+flush(stdout)
 integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1));
 print("done\n")
+flush(stdout)
 
 # Run
 print("Running solver...\n")
+flush(stdout)
 for (u,t) in tuples(integrator)
-    @show t
+    println(t)
+    flush(stdout)
 end
 print("Solver finished\n")
+flush(stdout)
 
 # Compute force
 sol = integrator.sol;
@@ -188,10 +198,12 @@ gif(anim, "$(case)_vorticity.gif", fps=anim_fps)
 
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
 print("Creating probe WindTunnelProblem... ")
+flush(stdout)
 probe_prob = WindTunnelProblem(g,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
                                    bc=ViscousFlow.get_bc_func(nothing))
 probe_sys = construct_system(probe_prob);
 print("done\n")
+flush(stdout)
 
 center = (L_TS_star / 2 + x_O_WT_star, H_TS_star / 2 + y_O_WT_star)
 LE = (center[1] - 1/2*cos(α*π/180), center[2] + 1/2*sin(α*π/180))
@@ -208,6 +220,7 @@ VTE_hist = Vector()
 wt_vel = zeros_grid(sys);
 
 print("Probing velocity...")
+flush(stdout)
 for i in 1:length(sol.t)
     ViscousFlow.velocity!(wt_vel, zeros_gridcurl(sys), sys, sol.t[i]);
     vel_fcn = interpolatable_field(wt_vel,g);
@@ -221,6 +234,7 @@ for i in 1:length(sol.t)
     push!(VTE_hist,vel_fcn[2](TE[1],TE[2]))
 end
 print("done\n")
+flush(stdout)
 
 open("$(case)_Q_and_V_probe.txt", "w") do io
     writedlm(io, [sol.t Q_suction/Q_in_star ULE_hist Umid_hist UTE_hist VLE_hist Vmid_hist VTE_hist])
@@ -256,26 +270,35 @@ forcing_dict = Dict("freestream" => gaussian_freestream)
 
 # ViscousFlow.jl simulation
 print("Creating ViscousIncompressibleFlowProblem... ")
+flush(stdout)
 viscous_prob = ViscousIncompressibleFlowProblem(g,airfoil,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
                                    bc=ViscousFlow.get_bc_func(nothing),forcing=forcing_dict)
 viscous_sys = construct_system(viscous_prob);
 print("done\n")
+flush(stdout)
 
 # Initialize the solution and integrator
 print("Initializing solution... ")
+flush(stdout)
 u0 = init_sol(viscous_sys)
 print("done\n")
+flush(stdout)
 tspan = (0.0,t_final)
 print("Initializing integrator... ")
+flush(stdout)
 integrator = init(u0,tspan,viscous_sys);
 print("done\n")
+flush(stdout)
 
 # Run
 print("Running solver...\n")
+flush(stdout)
 for (u,t) in tuples(integrator)
-    @show t
+    println(t)
+    flush(stdout)
 end
 print("Solver finished\n")
+flush(stdout)
 
 # Compute force
 sol = integrator.sol;
