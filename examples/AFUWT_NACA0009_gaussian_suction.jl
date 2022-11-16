@@ -3,7 +3,7 @@ using JSON
 using DelimitedFiles
 using Plots
 
-println("Number of Julia threads: $(Threads.threads())")
+#println("Number of Julia threads: $(Threads.threads())")
 
 ENV["GKSwstype"]="nul"
 
@@ -324,26 +324,26 @@ end
 
 ḣ_old = 0.0
 Γb_old = 0.0
-fx_wagner = Vector()
 fy_wagner = Vector()
 Γ̇b_hist = Vector()
 
 Δt_hist = diff(sol.t)
 
+Γ_b0 = -π*c_star*V_in_star*α*pi/180
+
 for i in 1:length(integrator.sol.t)-1
     ḣ = -Vmid_hist[i+1]
     ḧ = (ḣ-ḣ_old)/Δt_hist[i]
-    global ḣ_old = ḣ
+    ḣ_old = ḣ
     Γb = π*c_star*ḣ
     Γ̇b = (Γb-Γb_old)/Δt_hist[i]
-    global Γb_old = Γb
+    Γb_old = Γb
 
     push!(Γ̇b_hist,Γ̇b)
 
     fy_wagner_added_mass_i = -π/4*c_star^2*ḧ
-    fy_wagner_i = fy_wagner_added_mass_i - duhamelintegral(Γ̇b_hist,sol.t[2:i],Φ)
+    fy_wagner_i = fy_wagner_added_mass_i - Γ_b0 * Φ(sol.t[i]) - duhamelintegral(Γ̇b_hist,sol.t[2:i],Φ)
 
-    push!(fx_wagner,0.0)
     push!(fy_wagner,fy_wagner_i)
 end
 
