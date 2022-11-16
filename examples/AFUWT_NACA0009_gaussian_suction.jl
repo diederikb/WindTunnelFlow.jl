@@ -77,6 +77,7 @@ ylim = (-0.05 * H_TS_star + y_O_WT_star, 1.05 * H_TS_star + y_O_WT_star)
 g = setup_grid(xlim, ylim, params)
 
 println(g)
+flush(stdout)
 
 # Airfoil in the test section
 Δs = surface_point_spacing(g,params)
