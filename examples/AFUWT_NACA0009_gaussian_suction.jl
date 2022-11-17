@@ -2,6 +2,7 @@ using WindTunnelFlow
 using JSON
 using DelimitedFiles
 using Plots
+using Measures
 
 #println("Number of Julia threads: $(Threads.threads())")
 
@@ -167,8 +168,11 @@ wt_walls = create_windtunnel_boundaries(g,params,withinlet=false)
 ViscousFlow.streamfunction!(ψ,sol.u[end].x[1],sys,sol.t[end])
 y_probe = (0:0.1*H_TS_star:H_TS_star) .+ y_O_WT_star
 
+ψ = zeros_gridcurl(sys)
+ViscousFlow.streamfunction!(ψ,sol.u[end].x[1],sys,sol.t[end])
+y_probe = (0:0.1*H_TS_star:H_TS_star) .+ y_O_WT_star
+
 anim = @animate for i in 1:anim_sample_step:length(sol.t)
-#     l = @layout [a{0.6w} [Plots.grid(2,1)]]
     ViscousFlow.streamfunction!(ψ,sol.u[i].x[1],sys,sol.t[i])
     ψ_fcn = interpolatable_field(ψ,g)
     ψ_probe = ψ_fcn.(x_O_WT_star,y_probe)
@@ -177,25 +181,28 @@ anim = @animate for i in 1:anim_sample_step:length(sol.t)
     plot!(wt_walls,xlim=xlim,ylim=ylim,lc=:black,lw=2)
     plot!(suction.boundary,lc=:red,lw=2)
     plot!(airfoil,fc=:white,lc=:black)
-    p2=plot(sol.t[1:i],Q_suction[1:i]/Q_in_star,xlim=(0.0,sol.t[end]),ylim=(0,1),ylabel="\$Q_{suction}/Q_{in}\$",legend=false)
-    p3=plot(sol.t[1:i],fy_wt[1:i],xlim=(0.0,integrator.sol.t[end]),ylim=(-1,1),xlabel="\$tU/c\$",ylabel="\$C_L\$",legend=false)
-#     plot(p1,p2,p3,layout = l,size=(1000,300),margin=4mm)
-    plot(p1,p2,p3, layout=Plots.grid(3, 1, heights=[0.4 ,0.15, 0.45]),size=(600,670))
+    plot(p1,size=(850,300),margin=4mm)
 end
-gif(anim, "$(case)_vorticity_Qratio_CL.gif", fps=anim_fps)
+gif(anim, "$(case)_vorticity.gif", fps=anim_fps)
 
 anim = @animate for i in 1:anim_sample_step:length(sol.t)
-#     l = @layout [a{0.6w} [Plots.grid(2,1)]]
     ViscousFlow.streamfunction!(ψ,sol.u[i].x[1],sys,sol.t[i])
     ψ_fcn = interpolatable_field(ψ,g)
     ψ_probe = ψ_fcn.(x_O_WT_star,y_probe)
-    plot(ψ,sys,c=:gray,levels=ψ_probe,title="t = $(round(integrator.sol.t[i]; digits=1))",xlabel="\$x/c\$",ylabel="\$y/c\$",clim=(-10,10))
+    p1=plot(ψ,sys,c=:gray,levels=ψ_probe,title="t = $(round(integrator.sol.t[i]; digits=1))",xlabel="\$x/c\$",ylabel="\$y/c\$",clim=(-10,10))
     plot!(sol.u[i].x[1],sys,clim=(-15,15),color=cgrad(:RdBu, rev = true),levels=range(-15,15,length=30))
-    plot!(wt_walls,xlim=xlim,ylim=ylim,lc=:black,lw=2)
+    plot!(wt_walls,xlim=(-1.5,1.5),ylim=ylim,lc=:black,lw=2)
     plot!(suction.boundary,lc=:red,lw=2)
     plot!(airfoil,fc=:white,lc=:black)
+    plot(p1,size=(500,500),margin=4mm)
 end
-gif(anim, "$(case)_vorticity.gif", fps=anim_fps)
+gif(anim, "$(case)_vorticity_zoom.gif", fps=anim_fps)
+
+anim = @animate for i in 1:anim_sample_step:length(sol.t)
+    p2=plot(sol.t[1:i],fy[1:i],xlim=(0.0,integrator.sol.t[end]),ylim=(-1,1),xlabel="\$tU/c\$",ylabel="\$C_L\$",legend=false,title=" ")
+    plot(p2,size=(850,300),margin=4mm)
+end
+gif(anim, "$(case)_C_L.gif", fps=anim_fps)
 
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
 print("Creating probe WindTunnelProblem... ")
@@ -324,6 +331,7 @@ end
 
 ḣ_old = 0.0
 Γb_old = 0.0
+fx_wagner = Vector()
 fy_wagner = Vector()
 Γ̇b_hist = Vector()
 
@@ -334,16 +342,17 @@ fy_wagner = Vector()
 for i in 1:length(integrator.sol.t)-1
     ḣ = -Vmid_hist[i+1]
     ḧ = (ḣ-ḣ_old)/Δt_hist[i]
-    ḣ_old = ḣ
+    global ḣ_old = ḣ
     Γb = π*c_star*ḣ
     Γ̇b = (Γb-Γb_old)/Δt_hist[i]
-    Γb_old = Γb
+    global Γb_old = Γb
 
     push!(Γ̇b_hist,Γ̇b)
 
     fy_wagner_added_mass_i = -π/4*c_star^2*ḧ
     fy_wagner_i = fy_wagner_added_mass_i - Γ_b0 * Φ(sol.t[i]) - duhamelintegral(Γ̇b_hist,sol.t[2:i],Φ)
 
+    push!(fx_wagner,0.0)
     push!(fy_wagner,fy_wagner_i)
 end
 
