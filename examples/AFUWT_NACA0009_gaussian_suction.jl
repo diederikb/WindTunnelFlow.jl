@@ -199,10 +199,22 @@ end
 gif(anim, "$(case)_vorticity_zoom.gif", fps=anim_fps)
 
 anim = @animate for i in 1:anim_sample_step:length(sol.t)
-    p2=plot(sol.t[1:i],fy[1:i],xlim=(0.0,integrator.sol.t[end]),ylim=(-1,1),xlabel="\$tU/c\$",ylabel="\$C_L\$",legend=false,title=" ")
+    p2=plot(sol.t[1:i],fy_wt[1:i],xlim=(0.0,integrator.sol.t[end]),ylim=(-1,1),xlabel="\$tU/c\$",ylabel="\$C_L\$",legend=false,title=" ")
     plot(p2,size=(850,300),margin=4mm)
 end
 gif(anim, "$(case)_C_L.gif", fps=anim_fps)
+
+anim = @animate for i in 1:anim_sample_step:length(sol.t)
+    p2=plot(sol.t[1:i],fy_wt[1:i],
+            xlim=(params["t_suction"]-5*params["sigma_suction"], params["t_suction"]+12*params["sigma_suction"]),
+            ylim=(-0.5,0.75),
+            xlabel="\$tU/c\$",
+            ylabel="\$C_L\$",
+            legend=false,
+            title=" ")
+    plot(p2,size=(500,500),margin=4mm)
+end
+gif(anim, "$(case)_C_L_zoom.gif", fps=anim_fps)
 
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
 print("Creating probe WindTunnelProblem... ")
