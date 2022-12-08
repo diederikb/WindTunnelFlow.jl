@@ -10,10 +10,13 @@ ENV["GKSwstype"]="nul"
 
 function suction_velocity!(vel,pts,t,phys_params)
     V_out = phys_params["V_SD"]
-    σ = phys_params["sigma_suction"]
-    t_0 = phys_params["t_suction"]
-    g = Gaussian(σ,sqrt(π*σ^2)) >> t_0
-    vel .= -V_out*g(t)
+    t_open = phys_params["t_open"]
+    t_close = phys_params["t_close"]
+    tau_open = phys_params["tau_open"]
+    tau_close = phys_params["tau_close"]
+    g(t,t_open,t_close,tau_open,tau_close) = (t_open <= t < t_close ? (1 - exp(-(t-t_open)/tau_open)) : 0.0) + (t_close <= t ? (1 - exp(-(t_close-t_open)/tau_open)) * exp(-(t-t_close)/tau_close) : 0.0)
+
+    vel .= -V_out*g(t,t_open,t_close,tau_open,tau_close)
 end
 
 function inflow_velocity!(vel,pts,t,phys_params)
@@ -22,7 +25,7 @@ function inflow_velocity!(vel,pts,t,phys_params)
 end
 
 # Parse input file
-parsed_inputs = JSON.parsefile("AFUWT_NACA0009_gaussian_suction.json")
+parsed_inputs = JSON.parsefile("AFUWT_NACA0009_step_opening_closing.json")
 
 case = parsed_inputs["case"]
 c = parsed_inputs["c"] # m
@@ -35,8 +38,10 @@ L_TS = parsed_inputs["L_TS"] # m
 Q_SD_over_Q_in = parsed_inputs["Q_SD_over_Q_in"]
 x_SD_lo_over_L_TS = parsed_inputs["x_SD_lo_over_L_TS"]
 x_SD_hi_over_L_TS = parsed_inputs["x_SD_hi_over_L_TS"]
-sigma_suction = parsed_inputs["sigma_suction"]
-t_suction = parsed_inputs["t_suction"]
+t_open = parsed_inputs["t_open"]
+t_close = parsed_inputs["t_close"]
+tau_open = parsed_inputs["tau_open"]
+tau_close = parsed_inputs["tau_close"]
 grid_Re = get(parsed_inputs,"grid_Re",2.0)
 
 # Rescale every length by the chord length
@@ -69,8 +74,10 @@ params["wind tunnel height"] = H_TS_star
 params["wind tunnel center"] = (L_TS_star / 2 + x_O_WT_star, H_TS_star / 2 + y_O_WT_star)
 params["freestream speed"] = V_in_star
 params["freestream angle"] = 0.0
-params["sigma_suction"] = sigma_suction
-params["t_suction"] = t_suction
+params["t_open"] = t_open
+params["t_close"] = t_close
+params["tau_open"] = tau_open
+params["tau_close"] = tau_close
 params["V_in"] = V_in_star
 params["V_SD"] = V_SD_star
 xlim = (-0.05 * L_TS_star + x_O_WT_star, 1.05 * L_TS_star + x_O_WT_star)
@@ -153,7 +160,7 @@ for i in 1:length(sol.t)
 end
 
 # Write solution output during gust
-for i in findall(t_suction - 4*sigma_suction .<= sol.t .<= t_suction + 4*sigma_suction)
+for i in findall(t_open .<= sol.t .<= t_close + tau_close)
     if isapprox(sol.t[i] % 0.02, 0.0, atol=1e-8) || isapprox(sol.t[i] % 0.02, 0.02, atol=1e-8)
         open("$(case)_snapshot_$(i)_vorticity.txt", "w") do io
             writedlm(io, sol.u[i].x[1])
@@ -218,7 +225,7 @@ gif(anim, "$(case)_C_L.gif", fps=anim_fps)
 
 anim = @animate for i in 1:anim_sample_step:length(sol.t)
     p2=plot(sol.t[1:i],fy_wt[1:i],
-            xlim=(params["t_suction"]-5*params["sigma_suction"], params["t_suction"]+12*params["sigma_suction"]),
+            xlim=(t_open, t_close + tau_close),
             ylim=(-0.5,0.75),
             xlabel="\$tU/c\$",
             ylabel="\$C_L\$",
@@ -286,19 +293,22 @@ savefig("$(case)_V_probe_history.pdf")
 probe_sys = nothing
 integrator = nothing
 
-function gaussian_freestream(t,phys_params)
+function step_freestream(t,phys_params)
     Uinf = get(phys_params,"freestream speed",0.0)
     U_mid = get(phys_params,"U_mid",0.0)
     V_mid = get(phys_params,"V_mid",0.0)
-    σ = phys_params["sigma_suction"]
-    t_0 = phys_params["t_suction"]
-    g = Gaussian(σ,sqrt(π*σ^2)) >> t_0
-    return Uinf - (Uinf - U_mid)*g(t), V_mid*g(t)
+    t_open = phys_params["t_open"]
+    t_close = phys_params["t_close"]
+    tau_open = phys_params["tau_open"]
+    tau_close = phys_params["tau_close"]
+    g(t,t_open,t_close,tau_open,tau_close) = (t_open <= t < t_close ? (1 - exp(-(t-t_open)/tau_open)) : 0.0) + (t_close <= t ? (1 - exp(-(t_close-t_open)/tau_open)) * exp(-(t-t_close)/tau_close) : 0.0)
+
+    return Uinf - (Uinf - U_mid)*g(t,t_open,t_close,tau_open,tau_close), V_mid*g(t,t_open,t_close,tau_open,tau_close)
 end
 
 params["U_mid"] = minimum(Umid_hist)
 params["V_mid"] = maximum(Vmid_hist)
-forcing_dict = Dict("freestream" => gaussian_freestream)
+forcing_dict = Dict("freestream" => step_freestream)
 
 # ViscousFlow.jl simulation
 print("Creating ViscousIncompressibleFlowProblem... ")

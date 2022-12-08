@@ -1,0 +1,18 @@
+{
+  "case": "AFUWT_NACA0009_step_opening_closing",
+  "H_TS": 0.61,
+  "W_TS": 0.61,
+  "L_TS": 2.1,
+  "c": 0.245,
+  "Re": 300.0,
+  "alpha": 0.0,
+  "t_final": 20.0,
+  "Q_SD_over_Q_in": 0.85,
+  "x_SD_lo_over_L_TS": 0.4,
+  "x_SD_hi_over_L_TS": 0.6,
+  "t_open": 10.0,
+  "t_close": 14.0,
+  "tau_open": 0.41,
+  "tau_close": 0.11,
+  "grid_Re": 6.0
+}
