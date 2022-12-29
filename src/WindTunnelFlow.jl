@@ -89,7 +89,7 @@ function ImmersedLayers.prob_cache(prob::WindTunnelProblem,
 
     # Construct a Lapacian outfitted with the viscosity
     Re = ViscousFlow.get_Reynolds_number(phys_params)
-    viscous_L = Laplacian(base_cache,gcurl_cache,1.0/Re)
+    viscous_L = Laplacian(base_cache,1.0/Re)
 
     # Create cache for the convective derivative
     cdcache = ConvectiveDerivativeCache(base_cache)
