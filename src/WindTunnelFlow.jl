@@ -28,11 +28,13 @@ function ImmersedLayers.ConstrainedODEFunction(sys::ILMSystem{true,T}) where {T<
                                              f.bc_op;
                                              _func_cache=zeros_sol(sys),
                                              param_update_func=WindTunnelFlow.update_system!,
+                                             force_static=true
                                              )
 end
 
 function update_system!(sys::ILMSystem,u,sysold::ILMSystem,t)
 
+    # These next sys. assignments should not be necessary. Check if they can be removed.
     sys.phys_params = sysold.phys_params
     sys.bc = sysold.bc
     sys.forcing = sysold.forcing
@@ -42,9 +44,11 @@ function update_system!(sys::ILMSystem,u,sysold::ILMSystem,t)
     sys.extra_cache = sysold.extra_cache
 
     velocity!(sys.extra_cache.v_tmp,state(u),sys,t)
+
+    return sys
 end
 
-struct WindTunnelCache{CDT,FRT,DVT,VFT,VORT,DILT,VELT,FCT,WTST,WTBT,WTVT} <: AbstractExtraILMCache
+struct WindTunnelCache{CDT,FRT,DVT,VFT,VORT,DILT,VELT,FCT,WTST,WTBT,WTVT,WTSCT} <: AbstractExtraILMCache
     # ViscousIncompressibleFlow
     cdcache :: CDT
     fcache :: FRT
@@ -62,6 +66,8 @@ struct WindTunnelCache{CDT,FRT,DVT,VFT,VORT,DILT,VELT,FCT,WTST,WTBT,WTVT} <: Abs
     wt_bool :: WTBT
     wt_vel :: WTVT
     wt_body_bc :: DVT
+    wt_tmp_boundaries:: WTSCT
+    wt_vn_boundaries:: WTSCT
 end
 
 function ImmersedLayers.prob_cache(prob::WindTunnelProblem,
@@ -107,6 +113,9 @@ function ImmersedLayers.prob_cache(prob::WindTunnelProblem,
     end
 
     wt_boundaries = create_windtunnel_boundaries(g,phys_params;withinlet=hasinlet)
+    wt_tmp_boundaries = [ScalarData(points(wt_boundary)) for wt_boundary in wt_boundaries]
+    wt_vn_boundaries = [ScalarData(points(wt_boundary)) for wt_boundary in wt_boundaries]
+
     wt_prob = PotentialFlowProblem(g,wt_boundaries,scaling=GridScaling,phys_params=phys_params)
     wt_sys = construct_system(wt_prob);
 
@@ -123,7 +132,23 @@ function ImmersedLayers.prob_cache(prob::WindTunnelProblem,
     wt_vel = zeros_grid(base_cache)
     wt_body_bc = zeros_surface(base_cache)
 
-    WindTunnelCache(cdcache,fcache,dvb,vb_tmp,v_tmp,dv,dv_tmp,w_tmp,divv_tmp,velcache,f,wt_sys,wt_bool,wt_vel,wt_body_bc)
+    WindTunnelCache(cdcache,
+                    fcache,
+                    dvb,
+                    vb_tmp,
+                    v_tmp,
+                    dv,
+                    dv_tmp,
+                    w_tmp,
+                    divv_tmp,
+                    velcache,
+                    f,
+                    wt_sys,
+                    wt_bool,
+                    wt_vel,
+                    wt_body_bc,
+                    wt_tmp_boundaries,
+                    wt_vn_boundaries)
 end
 
 function ViscousFlow.viscousflow_vorticity_bc_rhs!(vb,sys::ILMSystem{true,T},t) where {T<:WindTunnelProblem}
@@ -172,7 +197,7 @@ Note: while most `ViscousFlow` methods are reused, this method differs from the 
 """
 function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{true,T},t) where {T<:WindTunnelProblem}
     @unpack forcing, phys_params, extra_cache, base_cache = sys
-    @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel, vb_tmp = extra_cache
+    @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel, vb_tmp, wt_tmp_boundaries, wt_vn_boundaries = extra_cache
 
     # Compute the freestream velocity field and store it in gdata_cache
     freestream_func = ViscousFlow.get_freestream_func(forcing)
@@ -193,8 +218,10 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     if haskey(phys_params, "inlets")
         for inlet in phys_params["inlets"]
             pts_inlet = points(extra_cache.wt_sys.base_cache.bl[inlet.wt_body])
-            wt_vn_inlet = ScalarData(pts_inlet)
-            add_flow_through!(wt_vn_inlet,pts_inlet,inlet,sys,t)
+            wt_vn_inlet = wt_vn_boundaries[inlet.wt_body]
+            wt_vn_inlet .= 0.0
+            tmp = wt_tmp_boundaries[inlet.wt_body]
+            add_flow_through!(wt_vn_inlet,pts_inlet,tmp,inlet,sys,t)
             wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,inlet.wt_body)] .+= wt_vn_inlet
         end
     end
@@ -202,8 +229,10 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     if haskey(phys_params, "outlets")
         for outlet in phys_params["outlets"]
             pts_outlet = points(extra_cache.wt_sys.base_cache.bl[outlet.wt_body])
-            wt_vn_outlet = ScalarData(pts_outlet)
-            add_flow_through!(wt_vn_outlet,pts_outlet,outlet,sys,t)
+            wt_vn_outlet = wt_vn_boundaries[outlet.wt_body]
+            wt_vn_outlet .= 0.0
+            tmp = wt_tmp_boundaries[outlet.wt_body]
+            add_flow_through!(wt_vn_outlet,pts_outlet,tmp,outlet,sys,t)
             wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
             # wt_dvn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
         end
@@ -235,7 +264,7 @@ Computes in-place the streamfunction field that accounts for the presence of the
 """
 function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSystem{true,T},t;withcorrection=true) where {T<:WindTunnelProblem}
     @unpack phys_params, forcing, extra_cache, base_cache = sys
-    @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel, velcache = extra_cache
+    @unpack dvb, velcache, divv_tmp, w_tmp, wt_vel, velcache, wt_tmp_boundaries, wt_vn_boundaries = extra_cache
     @unpack wcache = velcache
 
     # Same code as ViscousFlow.streamfunction!
@@ -258,8 +287,10 @@ function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSyst
         if haskey(phys_params, "inlets")
             for inlet in phys_params["inlets"]
                 pts_inlet = points(extra_cache.wt_sys.base_cache.bl[inlet.wt_body])
-                wt_vn_inlet = ScalarData(pts_inlet)
-                add_flow_through!(wt_vn_inlet,pts_inlet,inlet,sys,t)
+                wt_vn_inlet = wt_vn_boundaries[inlet.wt_body]
+                wt_vn_inlet .= 0.0
+                tmp = wt_tmp_boundaries[inlet.wt_body]
+                add_flow_through!(wt_vn_inlet,pts_inlet,tmp,inlet,sys,t)
                 wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,inlet.wt_body)] .+= wt_vn_inlet
             end
         end
@@ -267,8 +298,10 @@ function ViscousFlow.streamfunction!(ψ::Nodes{Dual},w::Nodes{Dual},sys::ILMSyst
         if haskey(phys_params, "outlets")
             for outlet in phys_params["outlets"]
                 pts_outlet = points(extra_cache.wt_sys.base_cache.bl[outlet.wt_body])
-                wt_vn_outlet = ScalarData(pts_outlet)
-                add_flow_through!(wt_vn_outlet,pts_outlet,outlet,sys,t)
+                wt_vn_outlet = wt_vn_boundaries[outlet.wt_body]
+                wt_vn_outlet .= 0.0
+                tmp = wt_tmp_boundaries[outlet.wt_body]
+                add_flow_through!(wt_vn_outlet,pts_outlet,tmp,outlet,sys,t)
                 wt_vn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
                 # wt_dvn[getrange(extra_cache.wt_sys.base_cache.bl,outlet.wt_body)] .+= wt_vn_outlet
             end
@@ -323,33 +356,27 @@ end
 struct UniformFlowThrough
     boundary :: Body
     set_velocity! :: Function # per unit length. If the normals of the boundary point to the interior of the wind tunnel, a positive strength gives inflow and a negative strength gives outflow
-    wt_body :: Int # body of the wind tunnel walls on with the uniform flow through has to be applied exclusively
+    wt_body :: Int # body of the wind tunnel walls on which the uniform flow through has to be applied exclusively
     pts :: VectorData
     scalar_cache :: ScalarData
 end
 
 UniformFlowThrough(boundary, set_velocity!, wt_body) = UniformFlowThrough(boundary, set_velocity!, wt_body, points(boundary), ScalarData(points(boundary)))
 
-function add_flow_through!(vn,vn_pts,flow,sys,t)
+function add_flow_through!(vn, vn_pts, tmp, flow, sys, t)
     @unpack phys_params, extra_cache, base_cache = sys
     ds = surface_point_spacing(base_cache.g,phys_params)
 
     dS = dlength(flow.boundary)[1] # Should change to using the full ds vector
     flow.set_velocity!(flow.scalar_cache,flow.pts,t,phys_params)
 
-    line_regularize!(vn,vn_pts,flow.scalar_cache,flow.pts,ds,dS)
+    line_regularize!(vn,vn_pts,flow.scalar_cache,flow.pts,tmp,ds,dS)
 end
 
-function line_regularize!(vn::ScalarData,vn_pts::VectorData,q::ScalarData,q_pts::VectorData,ds,dS;ddf_radius=1.0,ddf=CartesianGrids.ddf_witchhat)
+function line_regularize!(vn::ScalarData, vn_pts::VectorData, q::ScalarData, q_pts::VectorData, tmp::ScalarData, ds, dS; ddf_radius=1.0, ddf=CartesianGrids.ddf_witchhat)
     for i in 1:length(q)
-        for j in 1:length(vn)
-            dx = vn_pts.u[j] - q_pts.u[i]
-            dy = vn_pts.v[j] - q_pts.v[i]
-            if abs(dx)/ds < ddf_radius && abs(dy)/ds < ddf_radius
-                dist = sqrt(dx^2 + dy^2)/ds
-                vn[j] += q[i] * ddf(dist) * dS/ds
-            end
-        end
+        @inbounds tmp .= sqrt.((vn_pts.u .- q_pts.u[i]) .^2 .+ (vn_pts.v .- q_pts.v[i]) .^ 2)
+        @inbounds vn .+= q[i] .* ddf.(tmp ./ ds) .* dS ./ ds
     end
 end
 
