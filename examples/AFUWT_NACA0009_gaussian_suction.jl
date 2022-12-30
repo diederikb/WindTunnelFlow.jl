@@ -123,7 +123,9 @@ flush(stdout)
 tspan = (0.0,t_final)
 print("Initializing integrator... ")
 flush(stdout)
-integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1));
+Δt = prob.timestep_func(sys) # simulated time per time step
+save_skip = Int(ceil(5/params["grid Re"]))
+integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1),saveat=save_skip*Δt);
 print("done\n")
 flush(stdout)
 
@@ -168,10 +170,10 @@ open("$(case)_force_wind_tunnel.txt", "w") do io
     writedlm(io, [sol.t fx_wt fy_wt])
 end
 
-anim_sample_freq = 5 # samples per simulated time unit
+print("Making animations...\n")
+flush(stdout)
+
 anim_fps = 15 # frames per second of real time
-Δt = prob.timestep_func(sys) # simulated time per time step
-anim_sample_step = ceil(Int,1/(Δt*anim_sample_freq)) # time steps per sample
 
 # Make animation
 wt_walls = create_windtunnel_boundaries(g,params,withinlet=false)
@@ -183,7 +185,7 @@ y_probe = (0:0.1*H_TS_star:H_TS_star) .+ y_O_WT_star
 ViscousFlow.streamfunction!(ψ,sol.u[end].x[1],sys,sol.t[end])
 y_probe = (0:0.1*H_TS_star:H_TS_star) .+ y_O_WT_star
 
-anim = @animate for i in 1:anim_sample_step:length(sol.t)
+anim = @animate for i in 1:length(sol.t)
     ViscousFlow.streamfunction!(ψ,sol.u[i].x[1],sys,sol.t[i])
     ψ_fcn = interpolatable_field(ψ,g)
     ψ_probe = ψ_fcn.(x_O_WT_star,y_probe)
@@ -196,7 +198,7 @@ anim = @animate for i in 1:anim_sample_step:length(sol.t)
 end
 gif(anim, "$(case)_vorticity.gif", fps=anim_fps)
 
-anim = @animate for i in 1:anim_sample_step:length(sol.t)
+anim = @animate for i in 1:length(sol.t)
     ViscousFlow.streamfunction!(ψ,sol.u[i].x[1],sys,sol.t[i])
     ψ_fcn = interpolatable_field(ψ,g)
     ψ_probe = ψ_fcn.(x_O_WT_star,y_probe)
@@ -209,13 +211,13 @@ anim = @animate for i in 1:anim_sample_step:length(sol.t)
 end
 gif(anim, "$(case)_vorticity_zoom.gif", fps=anim_fps)
 
-anim = @animate for i in 1:anim_sample_step:length(sol.t)
+anim = @animate for i in 1:length(sol.t)
     p2=plot(sol.t[1:i],fy_wt[1:i],xlim=(0.0,integrator.sol.t[end]),ylim=(-1,1),xlabel="\$tU/c\$",ylabel="\$C_L\$",legend=false,title=" ")
     plot(p2,size=(850,300),margin=4mm)
 end
 gif(anim, "$(case)_C_L.gif", fps=anim_fps)
 
-anim = @animate for i in 1:anim_sample_step:length(sol.t)
+anim = @animate for i in 1:length(sol.t)
     p2=plot(sol.t[1:i],fy_wt[1:i],
             xlim=(params["t_suction"]-5*params["sigma_suction"], params["t_suction"]+12*params["sigma_suction"]),
             ylim=(-0.5,0.75),
@@ -226,6 +228,9 @@ anim = @animate for i in 1:anim_sample_step:length(sol.t)
     plot(p2,size=(500,500),margin=4mm)
 end
 gif(anim, "$(case)_C_L_zoom.gif", fps=anim_fps)
+print("done\n")
+flush(stdout)
+
 
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
 print("Creating probe WindTunnelProblem... ")
@@ -281,10 +286,6 @@ plot!(integrator.sol.t,VLE_hist,label="V LE")
 plot!(integrator.sol.t,VTE_hist,label="V TE")
 savefig("$(case)_V_probe_history.pdf")
 
-# Clear some memory
-probe_sys = nothing
-integrator = nothing
-
 function gaussian_freestream(t,phys_params)
     Uinf = get(phys_params,"freestream speed",0.0)
     U_mid = get(phys_params,"U_mid",0.0)
@@ -317,7 +318,7 @@ flush(stdout)
 tspan = (0.0,t_final)
 print("Initializing integrator... ")
 flush(stdout)
-integrator = init(u0,tspan,viscous_sys);
+integrator = init(u0,tspan,viscous_sys;,saveat=save_skip*Δt);
 print("done\n")
 flush(stdout)
 
