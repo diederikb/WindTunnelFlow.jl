@@ -3,8 +3,8 @@ using JSON
 using DelimitedFiles
 using Plots
 using Measures
-
-#println("Number of Julia threads: $(Threads.threads())")
+using LinearAlgebra
+using BenchmarkTools
 
 ENV["GKSwstype"]="nul"
 
@@ -135,9 +135,18 @@ integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1));
 print("done\n")
 flush(stdout)
 
-# Run
+# Step once
+step!(integrator)
+
+# Run (with a benchmark test at the beginning)
 print("Running solver...\n")
 flush(stdout)
+b = @benchmark step!($integrator)
+io = IOBuffer()
+show(io, "text/plain", b)
+s = String(take!(io))
+println(s)
+
 for (u,t) in tuples(integrator)
     println(t)
     flush(stdout)
@@ -146,10 +155,16 @@ print("Solver finished\n")
 flush(stdout)
 
 # Compute force
+print("Computing force...\n")
+flush(stdout)
 sol = integrator.sol;
 fx_wt, fy_wt = force(sol,sys,1)
+print("done\n")
+flush(stdout)
 
 # Compute suction ratio history
+print("Computing suction ratio history...\n")
+flush(stdout)
 pts = points(suction.boundary)
 vel = ScalarData(pts)
 Q_suction = []
@@ -158,8 +173,12 @@ for i in 1:length(sol.t)
     Q_suction_i = -integrate(vel,ScalarData(dlength(suction.boundary))) * W_TS_star
     push!(Q_suction,Q_suction_i)
 end
+print("done\n")
+flush(stdout)
 
 # Write solution output during gust
+print("Writing solution output during gust...\n")
+flush(stdout)
 for i in findall(t_open .<= sol.t .<= t_close + tau_close)
     if isapprox(sol.t[i] % 0.02, 0.0, atol=1e-8) || isapprox(sol.t[i] % 0.02, 0.02, atol=1e-8)
         open("$(case)_snapshot_$(i)_vorticity.txt", "w") do io
@@ -170,12 +189,16 @@ for i in findall(t_open .<= sol.t .<= t_close + tau_close)
         end
     end
 end
+print("done\n")
+flush(stdout)
 
 # Write force output
 open("$(case)_force_wind_tunnel.txt", "w") do io
     writedlm(io, [sol.t fx_wt fy_wt])
 end
 
+print("Making animations...\n")
+flush(stdout)
 anim_sample_freq = 5 # samples per simulated time unit
 anim_fps = 15 # frames per second of real time
 Δt = prob.timestep_func(sys) # simulated time per time step
@@ -234,6 +257,8 @@ anim = @animate for i in 1:anim_sample_step:length(sol.t)
     plot(p2,size=(500,500),margin=4mm)
 end
 gif(anim, "$(case)_C_L_zoom.gif", fps=anim_fps)
+print("done\n")
+flush(stdout)
 
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
 print("Creating probe WindTunnelProblem... ")
