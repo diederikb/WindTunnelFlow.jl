@@ -132,7 +132,7 @@ tspan = (0.0,t_final)
 print("Initializing integrator... ")
 flush(stdout)
 Δt = prob.timestep_func(sys) # simulated time per time step
-save_skip = Int(ceil(5/params["grid Re"]))
+save_skip = Int(ceil((5/params["grid Re"])^3))
 integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1),saveat=save_skip*Δt);
 print("done\n")
 flush(stdout)
@@ -349,7 +349,7 @@ flush(stdout)
 tspan = (0.0,t_final)
 print("Initializing integrator... ")
 flush(stdout)
-integrator = init(u0,tspan,viscous_sys;,saveat=save_skip*Δt);
+integrator = init(u0,tspan,viscous_sys;saveat=save_skip*Δt);
 print("done\n")
 flush(stdout)
 
