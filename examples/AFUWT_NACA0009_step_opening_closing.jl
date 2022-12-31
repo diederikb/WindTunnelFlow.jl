@@ -141,7 +141,7 @@ flush(stdout)
 step!(integrator)
 
 # Run (with a benchmark test at the beginning)
-print("Running solver...\n")
+print("Running solver... ")
 flush(stdout)
 b = @benchmark step!($integrator)
 io = IOBuffer()
@@ -157,7 +157,7 @@ print("Solver finished\n")
 flush(stdout)
 
 # Compute force
-print("Computing force...\n")
+print("Computing force... ")
 flush(stdout)
 sol = integrator.sol;
 fx_wt, fy_wt = force(sol,sys,1)
@@ -165,7 +165,7 @@ print("done\n")
 flush(stdout)
 
 # Compute suction ratio history
-print("Computing suction ratio history...\n")
+print("Computing suction ratio history... ")
 flush(stdout)
 pts = points(suction.boundary)
 vel = ScalarData(pts)
@@ -179,14 +179,14 @@ print("done\n")
 flush(stdout)
 
 # Write solution output during gust
-print("Writing solution output during gust...\n")
+print("Writing solution output during gust... ")
 flush(stdout)
 for i in findall(t_open .<= sol.t .<= t_close + tau_close)
     if isapprox(sol.t[i] % 0.02, 0.0, atol=1e-8) || isapprox(sol.t[i] % 0.02, 0.02, atol=1e-8)
-        open("$(case)_snapshot_$(i)_vorticity.txt", "w") do io
+        open("$(case)_snapshot_$(i)_vorticity_wind_tunnel.txt", "w") do io
             writedlm(io, sol.u[i].x[1])
         end
-        open("$(case)_snapshot_$(i)_time.txt", "w") do io
+        open("$(case)_snapshot_$(i)_time_wind_tunnel.txt", "w") do io
             writedlm(io, sol.t[i])
         end
     end
@@ -367,7 +367,23 @@ flush(stdout)
 sol = integrator.sol;
 fx_viscous, fy_viscous = force(sol,viscous_sys,1)
 
-# Write output
+# Write solution output during gust
+print("Writing solution output during gust... ")
+flush(stdout)
+for i in findall(t_open .<= sol.t .<= t_close + tau_close)
+    if isapprox(sol.t[i] % 0.02, 0.0, atol=1e-8) || isapprox(sol.t[i] % 0.02, 0.02, atol=1e-8)
+        open("$(case)_snapshot_$(i)_vorticity_no_wind_tunnel.txt", "w") do io
+            writedlm(io, sol.u[i].x[1])
+        end
+        open("$(case)_snapshot_$(i)_time_no_wind_tunnel.txt", "w") do io
+            writedlm(io, sol.t[i])
+        end
+    end
+end
+print("done\n")
+flush(stdout)
+
+# Write force output
 open("$(case)_force_no_wind_tunnel.txt", "w") do io
     writedlm(io, [sol.t fx_viscous fy_viscous])
 end

@@ -130,7 +130,7 @@ print("done\n")
 flush(stdout)
 
 # Run
-print("Running solver...\n")
+print("Running solver... ")
 flush(stdout)
 for (u,t) in tuples(integrator)
     println(t)
@@ -156,10 +156,10 @@ end
 # Write solution output during gust
 for i in findall(t_suction - 4*sigma_suction .<= sol.t .<= t_suction + 4*sigma_suction)
     if isapprox(sol.t[i] % 0.02, 0.0, atol=1e-8) || isapprox(sol.t[i] % 0.02, 0.02, atol=1e-8)
-        open("$(case)_snapshot_$(i)_vorticity.txt", "w") do io
+        open("$(case)_snapshot_$(i)_vorticity_wind_tunnel.txt", "w") do io
             writedlm(io, sol.u[i].x[1])
         end
-        open("$(case)_snapshot_$(i)_time.txt", "w") do io
+        open("$(case)_snapshot_$(i)_time_wind_tunnel.txt", "w") do io
             writedlm(io, sol.t[i])
         end
     end
@@ -170,7 +170,7 @@ open("$(case)_force_wind_tunnel.txt", "w") do io
     writedlm(io, [sol.t fx_wt fy_wt])
 end
 
-print("Making animations...\n")
+print("Making animations... ")
 flush(stdout)
 
 anim_fps = 15 # frames per second of real time
@@ -336,7 +336,19 @@ flush(stdout)
 sol = integrator.sol;
 fx_viscous, fy_viscous = force(sol,viscous_sys,1)
 
-# Write output
+# Write solution output during gust
+for i in findall(t_suction - 4*sigma_suction .<= sol.t .<= t_suction + 4*sigma_suction)
+    if isapprox(sol.t[i] % 0.02, 0.0, atol=1e-8) || isapprox(sol.t[i] % 0.02, 0.02, atol=1e-8)
+        open("$(case)_snapshot_$(i)_vorticity_no_wind_tunnel.txt", "w") do io
+            writedlm(io, sol.u[i].x[1])
+        end
+        open("$(case)_snapshot_$(i)_time_no_wind_tunnel.txt", "w") do io
+            writedlm(io, sol.t[i])
+        end
+    end
+end
+
+# Write force output
 open("$(case)_force_no_wind_tunnel.txt", "w") do io
     writedlm(io, [sol.t fx_viscous fy_viscous])
 end
