@@ -81,8 +81,7 @@ flush(stdout)
 
 # Airfoil in the test section
 Δs = surface_point_spacing(g,params)
-airfoil = NACA4(0.0, 0.0, 0.09, 300, len=c_star)
-airfoil = SplinedBody(airfoil.x, airfoil.y, Δs)
+airfoil = NACA4(0.0, 0.0, 0.09, Δs, len=c_star)
 T = RigidTransform((L_TS_star / 2 + x_O_WT_star, H_TS_star / 2 + y_O_WT_star), -α*π/180)
 T(airfoil) # transform the body to the current configuration
 
@@ -298,13 +297,18 @@ end
 
 params["U_mid"] = minimum(Umid_hist)
 params["V_mid"] = maximum(Vmid_hist)
-forcing_dict = Dict("freestream" => gaussian_freestream)
+params["freestream"] = gaussian_freestream
 
 # ViscousFlow.jl simulation
 print("Creating ViscousIncompressibleFlowProblem... ")
 flush(stdout)
-viscous_prob = ViscousIncompressibleFlowProblem(g,airfoil,phys_params=params;timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
-                                   bc=ViscousFlow.get_bc_func(nothing),forcing=forcing_dict)
+viscous_prob = ViscousIncompressibleFlowProblem(
+    g,
+    airfoil,
+    phys_params=params;
+    timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
+    bc=ViscousFlow.get_bc_func(nothing),
+    forcing=forcing_dict)
 viscous_sys = construct_system(viscous_prob);
 print("done\n")
 flush(stdout)
