@@ -178,8 +178,7 @@ viscous_prob = ViscousIncompressibleFlowProblem(
     airfoil,
     phys_params=params;
     timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
-    bc=ViscousFlow.get_bc_func(nothing),
-    forcing=forcing_dict)
+    bc=ViscousFlow.get_bc_func(nothing))
 viscous_sys = construct_system(viscous_prob);
 print("done\n")
 flush(stdout)
