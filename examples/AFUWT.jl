@@ -9,7 +9,9 @@ using BenchmarkTools
 ENV["GKSwstype"]="nul"
 
 # Parse input file
-json_file = "AFUWT_NACA0009_gaussian_suction.json"
+files = readdir()
+json_file_id = findall(f->occursin(r"AFUWT.*\.json",f),files)[1]
+json_file = files[json_file_id]
 inputs = JSON.parsefile(json_file)
 
 # Create the wind tunnel problem
