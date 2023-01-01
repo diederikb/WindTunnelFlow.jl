@@ -4,12 +4,11 @@ using DelimitedFiles
 using Plots
 using Measures
 using LinearAlgebra
-using BenchmarkTools
 
 ENV["GKSwstype"]="nul"
 
 # Parse input file
-json_file = "AFUWT_NACA0009_step_opening_closing.json"
+json_file = "AFUWT_NACA0009_gaussian_suction.json"
 inputs = JSON.parsefile(json_file)
 
 # Create the wind tunnel problem
@@ -29,18 +28,9 @@ integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1),sav
 print("done\n")
 flush(stdout)
 
-# Step once
-step!(integrator)
-
-# Run (with a benchmark test at the beginning)
+# Run
 print("Running solver... ")
 flush(stdout)
-b = @benchmark step!($integrator)
-io = IOBuffer()
-show(io, "text/plain", b)
-s = String(take!(io))
-println(s)
-
 for (u,t) in tuples(integrator)
     println(t)
     flush(stdout)
@@ -49,16 +39,10 @@ print("Solver finished\n")
 flush(stdout)
 
 # Compute force
-print("Computing force... ")
-flush(stdout)
 sol = integrator.sol;
 fx_wt, fy_wt = force(sol,sys,1)
-print("done\n")
-flush(stdout)
 
 # Compute suction ratio history
-print("Computing suction ratio history... ")
-flush(stdout)
 pts = points(suction.boundary)
 vel = ScalarData(pts)
 Q_suction = []
@@ -67,13 +51,15 @@ for i in 1:length(sol.t)
     Q_suction_i = -integrate(vel,ScalarData(dlength(suction.boundary))) * W_TS_star
     push!(Q_suction,Q_suction_i)
 end
-print("done\n")
-flush(stdout)
 
 # Write solution output during gust
-print("Writing solution output during gust... ")
-flush(stdout)
-for i in findall(t_open .<= sol.t .<= t_close + tau_close)
+if occursin("step_opening_closing",lowercase(gust_type))
+    idx = findall(t_open .<= sol.t .<= t_close + tau_close)
+else
+    idx = findall(t_suction - 4*sigma_suction .<= sol.t .<= t_suction + 4*sigma_suction)
+end
+
+for i in idx
     if isapprox(sol.t[i] % 0.02, 0.0, atol=1e-8) || isapprox(sol.t[i] % 0.02, 0.02, atol=1e-8)
         open("$(case)_snapshot_$(i)_vorticity_wind_tunnel.txt", "w") do io
             writedlm(io, sol.u[i].x[1])
@@ -83,74 +69,11 @@ for i in findall(t_open .<= sol.t .<= t_close + tau_close)
         end
     end
 end
-print("done\n")
-flush(stdout)
 
 # Write force output
 open("$(case)_force_wind_tunnel.txt", "w") do io
     writedlm(io, [sol.t fx_wt fy_wt])
 end
-
-print("Making animations...\n")
-flush(stdout)
-
-anim_fps = 15 # frames per second of real time
-
-# Make animation
-wt_walls = create_windtunnel_boundaries(g,params,withinlet=false)
-ψ = zeros_gridcurl(sys)
-ViscousFlow.streamfunction!(ψ,sol.u[end].x[1],sys,sol.t[end])
-y_probe = (0:0.1*H_TS_star:H_TS_star) .+ y_O_WT_star
-
-ψ = zeros_gridcurl(sys)
-ViscousFlow.streamfunction!(ψ,sol.u[end].x[1],sys,sol.t[end])
-y_probe = (0:0.1*H_TS_star:H_TS_star) .+ y_O_WT_star
-
-anim = @animate for i in 1:length(sol.t)
-    ViscousFlow.streamfunction!(ψ,sol.u[i].x[1],sys,sol.t[i])
-    ψ_fcn = interpolatable_field(ψ,g)
-    ψ_probe = ψ_fcn.(x_O_WT_star,y_probe)
-    p1=plot(ψ,sys,c=:gray,levels=ψ_probe,title="t = $(round(integrator.sol.t[i]; digits=1))",xlabel="\$x/c\$",ylabel="\$y/c\$",clim=(-10,10))
-    plot!(sol.u[i].x[1],sys,clim=(-15,15),color=cgrad(:RdBu, rev = true),levels=range(-15,15,length=30))
-    plot!(wt_walls,xlim=xlim,ylim=ylim,lc=:black,lw=2)
-    plot!(suction.boundary,lc=:red,lw=2)
-    plot!(airfoil,fc=:white,lc=:black)
-    plot(p1,size=(850,300),margin=4mm)
-end
-gif(anim, "$(case)_vorticity.gif", fps=anim_fps)
-
-anim = @animate for i in 1:length(sol.t)
-    ViscousFlow.streamfunction!(ψ,sol.u[i].x[1],sys,sol.t[i])
-    ψ_fcn = interpolatable_field(ψ,g)
-    ψ_probe = ψ_fcn.(x_O_WT_star,y_probe)
-    p1=plot(ψ,sys,c=:gray,levels=ψ_probe,title="t = $(round(integrator.sol.t[i]; digits=1))",xlabel="\$x/c\$",ylabel="\$y/c\$",clim=(-10,10))
-    plot!(sol.u[i].x[1],sys,clim=(-15,15),color=cgrad(:RdBu, rev = true),levels=range(-15,15,length=30))
-    plot!(wt_walls,xlim=(-1.5,1.5),ylim=ylim,lc=:black,lw=2)
-    plot!(suction.boundary,lc=:red,lw=2)
-    plot!(airfoil,fc=:white,lc=:black)
-    plot(p1,size=(500,500),margin=4mm)
-end
-gif(anim, "$(case)_vorticity_zoom.gif", fps=anim_fps)
-
-anim = @animate for i in 1:length(sol.t)
-    p2=plot(sol.t[1:i],fy_wt[1:i],xlim=(0.0,integrator.sol.t[end]),ylim=(-1,1),xlabel="\$tU/c\$",ylabel="\$C_L\$",legend=false,title=" ")
-    plot(p2,size=(850,300),margin=4mm)
-end
-gif(anim, "$(case)_C_L.gif", fps=anim_fps)
-
-anim = @animate for i in 1:length(sol.t)
-    p2=plot(sol.t[1:i],fy_wt[1:i],
-            xlim=(t_open, t_close + tau_close),
-            ylim=(-0.5,0.75),
-            xlabel="\$tU/c\$",
-            ylabel="\$C_L\$",
-            legend=false,
-            title=" ")
-    plot(p2,size=(500,500),margin=4mm)
-end
-gif(anim, "$(case)_C_L_zoom.gif", fps=anim_fps)
-print("done\n")
-flush(stdout)
 
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
 print("Creating probe WindTunnelProblem... ")
@@ -206,6 +129,16 @@ plot!(integrator.sol.t,VLE_hist,label="V LE")
 plot!(integrator.sol.t,VTE_hist,label="V TE")
 savefig("$(case)_V_probe_history.pdf")
 
+function gaussian_freestream(t,phys_params)
+    Uinf = get(phys_params,"freestream speed",0.0)
+    U_mid = get(phys_params,"U_mid",0.0)
+    V_mid = get(phys_params,"V_mid",0.0)
+    σ = phys_params["sigma_suction"]
+    t_0 = phys_params["t_suction"]
+    g = Gaussian(σ,sqrt(π*σ^2)) >> t_0
+    return Uinf - (Uinf - U_mid)*g(t), V_mid*g(t)
+end
+
 function step_freestream(t,phys_params)
     Uinf = get(phys_params,"freestream speed",0.0)
     U_mid = get(phys_params,"U_mid",0.0)
@@ -221,7 +154,12 @@ end
 
 params["U_mid"] = minimum(Umid_hist)
 params["V_mid"] = maximum(Vmid_hist)
-params["freestream"] = step_freestream
+
+if occursin("step_opening_closing",lowercase(gust_type))
+    params["freestream"] = step_freestream
+else
+    params["freestream"] = gaussian_freestream
+end
 
 # ViscousFlow.jl simulation
 print("Creating ViscousIncompressibleFlowProblem... ")
@@ -231,7 +169,8 @@ viscous_prob = ViscousIncompressibleFlowProblem(
     airfoil,
     phys_params=params;
     timestep_func=ViscousFlow.DEFAULT_TIMESTEP_FUNC,
-    bc=ViscousFlow.get_bc_func(nothing))
+    bc=ViscousFlow.get_bc_func(nothing),
+    forcing=forcing_dict)
 viscous_sys = construct_system(viscous_prob);
 print("done\n")
 flush(stdout)
@@ -264,9 +203,7 @@ sol = integrator.sol;
 fx_viscous, fy_viscous = force(sol,viscous_sys,1)
 
 # Write solution output during gust
-print("Writing solution output during gust... ")
-flush(stdout)
-for i in findall(t_open .<= sol.t .<= t_close + tau_close)
+for i in idx
     if isapprox(sol.t[i] % 0.02, 0.0, atol=1e-8) || isapprox(sol.t[i] % 0.02, 0.02, atol=1e-8)
         open("$(case)_snapshot_$(i)_vorticity_no_wind_tunnel.txt", "w") do io
             writedlm(io, sol.u[i].x[1])
@@ -276,8 +213,6 @@ for i in findall(t_open .<= sol.t .<= t_close + tau_close)
         end
     end
 end
-print("done\n")
-flush(stdout)
 
 # Write force output
 open("$(case)_force_no_wind_tunnel.txt", "w") do io
