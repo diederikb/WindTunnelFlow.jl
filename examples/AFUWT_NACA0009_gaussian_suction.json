@@ -1,5 +1,7 @@
 {
   "case": "AFUWT_NACA0009_gaussian_suction",
+  "airfoil": "naca0009",
+  "gust_type": "gaussian_suction",
   "H_TS": 0.61,
   "W_TS": 0.61,
   "L_TS": 2.1,

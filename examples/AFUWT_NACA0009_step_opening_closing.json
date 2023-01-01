@@ -1,5 +1,7 @@
 {
   "case": "AFUWT_NACA0009_step_opening_closing",
+  "airfoil": "naca0009",
+  "gust_type": "step_opening_closing",
   "H_TS": 0.61,
   "W_TS": 0.61,
   "L_TS": 2.1,
