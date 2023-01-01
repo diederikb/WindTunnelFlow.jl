@@ -4,6 +4,7 @@ using DelimitedFiles
 using Plots
 using Measures
 using LinearAlgebra
+using BenchmarkTools
 
 ENV["GKSwstype"]="nul"
 
@@ -28,9 +29,15 @@ integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1),sav
 print("done\n")
 flush(stdout)
 
-# Run
+# Run (with a benchmark test at the beginning)
 print("Running solver... ")
 flush(stdout)
+b = @benchmark step!($integrator)
+io = IOBuffer()
+show(io, "text/plain", b)
+s = String(take!(io))
+println(s)
+
 for (u,t) in tuples(integrator)
     println(t)
     flush(stdout)
