@@ -74,9 +74,9 @@ end
 print("Writing solution output during gust... ")
 flush(stdout)
 if occursin("step_opening_closing",lowercase(gust_type))
-    idx = findall(t_open .<= sol.t .<= t_close + tau_close)
+    idx = findall(t_open .<= sol.t .<= t_close + tau_close + 2 * c_star / V_in_star)
 else
-    idx = findall(t_suction - 4*sigma_suction .<= sol.t .<= t_suction + 4*sigma_suction)
+    idx = findall(t_suction - 4 * sigma_suction .<= sol.t .<= t_suction + 4 * sigma_suction + 2 * c_star / V_in_star)
 end
 
 for i in idx
