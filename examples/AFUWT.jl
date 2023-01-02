@@ -17,6 +17,15 @@ inputs = JSON.parsefile(json_file)
 # Create the wind tunnel problem
 include("AFUWT_create_sys.jl")
 
+# Write grid parameters
+open("$(case)_grid.txt", "w") do io
+    writedlm(io, g.N)
+    writedlm(io, g.I0)
+    writedlm(io, g.Δx)
+    writedlm(io, g.xlim )
+    writedlm(io, g.nthreads)
+end
+
 # Initialize the solution and integrator
 print("Initializing solution... ")
 u0 = init_sol(sys)
