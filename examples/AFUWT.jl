@@ -228,10 +228,10 @@ print("Writing solution output during gust... ")
 flush(stdout)
 for i in idx
     if isapprox(sol.t[i] % 0.02, 0.0, atol=1e-8) || isapprox(sol.t[i] % 0.02, 0.02, atol=1e-8)
-        open("$(case)_snapshot_$(i)_vorticity_no_wind_tunnel.txt", "w") do io
+        open("$(case)_snapshot_$(i)_vorticity_viscous_flow.txt", "w") do io
             writedlm(io, sol.u[i].x[1])
         end
-        open("$(case)_snapshot_$(i)_time_no_wind_tunnel.txt", "w") do io
+        open("$(case)_snapshot_$(i)_time_viscous_flow.txt", "w") do io
             writedlm(io, sol.t[i])
         end
     end
@@ -240,7 +240,7 @@ print("done\n")
 flush(stdout)
 
 # Write force output
-open("$(case)_force_no_wind_tunnel.txt", "w") do io
+open("$(case)_force_viscous_flow.txt", "w") do io
     writedlm(io, [sol.t fx_viscous fy_viscous])
 end
 
