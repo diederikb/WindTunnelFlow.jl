@@ -12,7 +12,6 @@ function read_vorticity_relative_index!(w,sys,i)
     println("$i out of $(length(f_idx))")
     if i <= length(f_idx)
         f = files[f_idx[i]]
-        f = joinpath(dir,f)
         w_data = readdlm(f, Float64)
         println(size(w_data))
         w.data .= w_data
@@ -27,7 +26,6 @@ function read_vorticity!(w,sys,i)
     f_idx = findall(f->occursin(r"snapshot_$(i).*vorticity_wind_tunnel",f),files)
     if length(f_idx) == 1
         f = files[f_idx[1]]
-        f = joinpath(dir,f)
         w_data = readdlm(f, Float64)
         println(size(w_data))
         w.data .= w_data
@@ -42,7 +40,6 @@ function read_timestamp(i)
     f_idx = findall(f->occursin(r"snapshot.*time_wind_tunnel",f),files)
     snapshots_time = Float64[]
     f = files[f_idx[i]]
-    f = joinpath(dir,f)
     t = readdlm(f, Float64)[1]
     return t
 end
@@ -118,7 +115,7 @@ Q = Nodes(Dual,size(g))
 nodes_primal_tmp = Nodes(Primal,size(g))
 ∇v = EdgeGradient(Primal,Dual,size(g));
 
-read_vorticity!(w,dir,sys,frames_idx[1]);
+read_vorticity!(w,sys,frames_idx[1]);
 ViscousFlow.velocity!(v, w, sys, frames_idx[1]);
 grad!(∇v,v)
 ∇v ./= cellsize(sys)
@@ -137,7 +134,7 @@ Q_std = std(Q_probe)
 Q_levels = range(Q_mean,Q_mean+Q_std,10)
 
 for i in frames_idx
-    read_vorticity_relative_index!(w,dir,sys,i);
+    read_vorticity_relative_index!(w,sys,i);
     ViscousFlow.streamfunction!(ψ,w,sys,t);
 
     ψ_fcn = interpolatable_field(ψ,g)
