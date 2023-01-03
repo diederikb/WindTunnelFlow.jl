@@ -6,8 +6,8 @@ using Statistics
 
 ENV["GKSwstype"]="nul"
 
-function read_vorticity_relative_index!(w,dir,sys,i)
-    files = readdir(dir)
+function read_vorticity_relative_index!(w,sys,i)
+    files = readdir()
     f_idx = findall(f->occursin(r"snapshot.*vorticity_wind_tunnel",f),files)
     println("$i out of $(length(f_idx))")
     if i <= length(f_idx)
@@ -22,8 +22,8 @@ function read_vorticity_relative_index!(w,dir,sys,i)
     return w
 end
 
-function read_vorticity!(w,dir,sys,i)
-    files = readdir(dir)
+function read_vorticity!(w,sys,i)
+    files = readdir()
     f_idx = findall(f->occursin(r"snapshot_$(i).*vorticity_wind_tunnel",f),files)
     if length(f_idx) == 1
         f = files[f_idx[1]]
@@ -37,8 +37,8 @@ function read_vorticity!(w,dir,sys,i)
     return w
 end
 
-function read_timestamp(dir,i)
-    files = readdir(dir)
+function read_timestamp(,i)
+    files = readdir()
     f_idx = findall(f->occursin(r"snapshot.*time_wind_tunnel",f),files)
     snapshots_time = Float64[]
     f = files[f_idx[i]]
