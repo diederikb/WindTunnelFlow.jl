@@ -85,7 +85,19 @@ params["V_in"] = V_in_star
 params["V_SD"] = V_SD_star
 xlim = (-0.05 * L_TS_star + x_O_WT_star, 1.05 * L_TS_star + x_O_WT_star)
 ylim = (-0.05 * H_TS_star + y_O_WT_star, 1.05 * H_TS_star + y_O_WT_star)
-g = setup_grid(xlim, ylim, params)
+files = readdir()
+gridfile_idx = findall(f->occursin(r".*grid\.txt",f),files)
+if length(gridfile_idx) > 0
+    grid_info = readdlm(files[gridfile_idx[end]]) # should do this as a json file
+    g = PhysicalGrid(
+        (grid_info[1,1],grid_info[2,1]),
+        (grid_info[3,1],grid_info[4,1]),
+        grid_info[5,1],
+        ((grid_info[6,1],grid_info[6,2]),(grid_info[7,1],grid_info[7,2])),
+        1)
+else
+    g = setup_grid(xlim, ylim, params)
+end
 
 println(g)
 flush(stdout)
