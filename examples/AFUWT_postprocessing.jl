@@ -37,7 +37,7 @@ function read_vorticity!(w,sys,i)
     return w
 end
 
-function read_timestamp(,i)
+function read_timestamp(i)
     files = readdir()
     f_idx = findall(f->occursin(r"snapshot.*time_wind_tunnel",f),files)
     snapshots_time = Float64[]
@@ -94,6 +94,15 @@ frames_times = [
     t_suction_end + 1 * V_in_star / c_star]
 frames_idx = [findmin(abs.(frames_times[i] .- t))[2] for i in 1:length(frames_times)];
 
+# Create force figure
+plot(t,force_wind_tunnel[:,2],label="C_D")
+plot!(t,force_wind_tunnel[:,3],label="C_L")
+plot!(t,Q_and_V_probe[:,2],label="Q/Q_in")
+# vline!(t[frames_idx],c=:black,ls=:dash)
+scatter!(t[frames_idx],force_wind_tunnel[frames_idx,3],c=:black,ls=:dash)
+plot!(xlabel="U*t/c",xlim=[9,12])
+savefig("$(case)_forces.png")
+
 # Create 6-snapshot figure
 fig_xlim = [-0.75,0.75]
 fig_ylim = [-0.75,0.75]
@@ -148,4 +157,4 @@ for i in frames_idx
 end
 
 plot(plot_list..., layout = (2, 3), size=(800,600))
-savefig("case_snapshots.pdf")
+savefig("$(case)_snapshots.pdf")
