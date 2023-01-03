@@ -98,7 +98,7 @@ frames_idx = [findmin(abs.(frames_times[i] .- t))[2] for i in 1:length(frames_ti
 fig_xlim = [-0.75,0.75]
 fig_ylim = [-0.75,0.75]
 y_probe_ψ = range(ylim[1],ylim[2],50)
-x_probe_ψ = zeros(length(y_probe)) .+ 0.0
+x_probe_ψ = zeros(length(y_probe_ψ)) .+ 0.0
 
 plot_list = []
 
