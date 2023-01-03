@@ -59,6 +59,7 @@ flush(stdout)
 # Compute force
 sol = integrator.sol;
 fx_wt, fy_wt = force(sol,sys,1)
+m_wt = moment(sol,sys,1)
 
 # Compute suction ratio history
 pts = points(suction.boundary)
@@ -74,9 +75,9 @@ end
 print("Writing solution output during gust... ")
 flush(stdout)
 if occursin("step_opening_closing",lowercase(gust_type))
-    idx = findall(t_open .<= sol.t .<= t_close + tau_close + 2 * c_star / V_in_star)
+    idx = findall(t_open .<= sol.t .<= t_close + tau_close + 2 * V_in_star / c_star)
 else
-    idx = findall(t_suction - 4 * sigma_suction .<= sol.t .<= t_suction + 4 * sigma_suction + 2 * c_star / V_in_star)
+    idx = findall(t_suction - 4 * sigma_suction .<= sol.t .<= t_suction + 4 * sigma_suction + 2 * V_in_star / c_star)
 end
 
 for i in idx
@@ -93,6 +94,10 @@ flush(stdout)
 # Write force output
 open("$(case)_force_wind_tunnel.txt", "w") do io
     writedlm(io, [sol.t fx_wt fy_wt])
+end
+# Write moment output
+open("$(case)_moment_wind_tunnel.txt", "w") do io
+    writedlm(io, [sol.t m_wt])
 end
 
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
@@ -220,6 +225,7 @@ flush(stdout)
 # Compute force
 sol = integrator.sol;
 fx_viscous, fy_viscous = force(sol,viscous_sys,1)
+m_viscous = moment(sol,viscous_sys,1)
 
 # Write solution output during gust
 print("Writing solution output during gust... ")
@@ -238,6 +244,11 @@ flush(stdout)
 # Write force output
 open("$(case)_force_viscous_flow.txt", "w") do io
     writedlm(io, [sol.t fx_viscous fy_viscous])
+end
+
+# Write moment output
+open("$(case)_moment_viscous_flow.txt", "w") do io
+    writedlm(io, [sol.t m_viscous])
 end
 
 # Wagner response
