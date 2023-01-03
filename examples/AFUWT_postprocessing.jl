@@ -64,6 +64,11 @@ Q_and_V_probe_file = files[findall(f->occursin(r".*Q_and_V_probe\.txt",f),files)
 force_wind_tunnel_file = files[findall(f->occursin(r".*force_wind_tunnel\.txt",f),files)[1]]
 
 inputs = JSON.parsefile(json_file)
+t_suction = inputs["t_suction"]
+σ_suction = inputs["sigma_suction"]
+
+force_wind_tunnel = readdlm(force_wind_tunnel_file, '\t', Float64, '\n');
+Q_and_V_probe = readdlm(Q_and_V_probe_file, '\t', Float64, '\n');
 t = force_wind_tunnel[:,1];
 C_D = force_wind_tunnel[:,2];
 C_L = force_wind_tunnel[:,3];
