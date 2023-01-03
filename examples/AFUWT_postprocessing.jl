@@ -23,7 +23,8 @@ end
 
 function read_vorticity!(w,i)
     files = readdir()
-    f_idx = findall(f->occursin(r"snapshot_$(i).*vorticity_wind_tunnel",f),files)
+    match_string = "snapshot_$(i).*vorticity_wind_tunnel"
+    f_idx = findall(f->occursin(Regex(match_string),f),files)
     if length(f_idx) == 1
         f = files[f_idx[1]]
         w_data = readdlm(f, Float64)
@@ -37,7 +38,8 @@ end
 
 function read_timestamp(i)
     files = readdir()
-    f_idx = findall(f->occursin(r"snapshot_$(i).*time_wind_tunnel",f),files)
+    match_string = "snapshot_$(i).*time_wind_tunnel"
+    f_idx = findall(f->occursin(Regex(match_string),f),files)
     snapshots_time = Float64[]
     f = files[f_idx[1]]
     t = readdlm(f, Float64)[1]
