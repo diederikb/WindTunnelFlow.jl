@@ -60,8 +60,8 @@ end
 
 files = readdir()
 json_file = files[findall(f->occursin(r".*\.json",f),files)[1]]
-Q_and_V_probe_file = files[findall(f->occursin(r".*\Q_and_V_probe.txt",f),files)[1]]
-force_wind_tunnel_file = files[findall(f->occursin(r".*\force_wind_tunnel.txt",f),files)[1]]
+Q_and_V_probe_file = files[findall(f->occursin(r".*Q_and_V_probe\.txt",f),files)[1]]
+force_wind_tunnel_file = files[findall(f->occursin(r".*force_wind_tunnel\.txt",f),files)[1]]
 
 inputs = JSON.parsefile(json_file)
 t = force_wind_tunnel[:,1];
