@@ -37,9 +37,9 @@ end
 
 function read_timestamp(i)
     files = readdir()
-    f_idx = findall(f->occursin(r"snapshot.*time_wind_tunnel",f),files)
+    f_idx = findall(f->occursin(r"snapshot_$(i).*time_wind_tunnel",f),files)
     snapshots_time = Float64[]
-    f = files[f_idx[i]]
+    f = files[f_idx[1]]
     t = readdlm(f, Float64)[1]
     return t
 end
@@ -50,7 +50,7 @@ function q_criterion!(Q::Nodes{Dual},vel_grad,sys,nodes_primal_tmp::Nodes{Primal
     nodes_primal_tmp .+= vel_grad.dudx .+ vel_grad.dvdy
     nodes_primal_tmp .= .- abs.(nodes_primal_tmp) # -|S|²
     grid_interpolate!(Q,nodes_primal_tmp)
-    Q .+= abs.(0.5 .* (vel_grad.dudy - vel_grad.dvdx) .^ 2) # |Ω|² - |S|²
+    Q .+= abs.(0.5 .* (vel_grad.dudy .- vel_grad.dvdx) .^ 2) # |Ω|² - |S|²
     Q .*= 0.5
     return Q
 end
@@ -115,7 +115,7 @@ Q = Nodes(Dual,size(g))
 nodes_primal_tmp = Nodes(Primal,size(g))
 ∇v = EdgeGradient(Primal,Dual,size(g));
 
-read_vorticity!(w,sys,frames_idx[1]);
+read_vorticity!(w,frames_idx[1]);
 ViscousFlow.velocity!(v, w, sys, frames_idx[1]);
 grad!(∇v,v)
 ∇v ./= cellsize(sys)
@@ -134,7 +134,7 @@ Q_std = std(Q_probe)
 Q_levels = range(Q_mean,Q_mean+Q_std,10)
 
 for i in frames_idx
-    read_vorticity_relative_index!(w,i);
+    read_vorticity!(w,i);
     t_i = read_timestamp(i);
     ViscousFlow.streamfunction!(ψ,w,sys,t_i);
 
