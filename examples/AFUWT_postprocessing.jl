@@ -6,7 +6,7 @@ using Statistics
 
 ENV["GKSwstype"]="nul"
 
-function read_vorticity_relative_index!(w,sys,i)
+function read_vorticity_relative_index!(w,i)
     files = readdir()
     f_idx = findall(f->occursin(r"snapshot.*vorticity_wind_tunnel",f),files)
     println("$i out of $(length(f_idx))")
@@ -21,7 +21,7 @@ function read_vorticity_relative_index!(w,sys,i)
     return w
 end
 
-function read_vorticity!(w,sys,i)
+function read_vorticity!(w,i)
     files = readdir()
     f_idx = findall(f->occursin(r"snapshot_$(i).*vorticity_wind_tunnel",f),files)
     if length(f_idx) == 1
@@ -134,13 +134,14 @@ Q_std = std(Q_probe)
 Q_levels = range(Q_mean,Q_mean+Q_std,10)
 
 for i in frames_idx
-    read_vorticity_relative_index!(w,sys,i);
-    ViscousFlow.streamfunction!(ψ,w,sys,t);
+    read_vorticity_relative_index!(w,i);
+    t_i = read_timestamp(i);
+    ViscousFlow.streamfunction!(ψ,w,sys,t_i);
 
     ψ_fcn = interpolatable_field(ψ,g)
     ψ_probe = ψ_fcn.(x_probe_ψ,y_probe_ψ)
 
-    ViscousFlow.velocity!(v, w, sys, t);
+    ViscousFlow.velocity!(v, w, sys, t_i);
     grad!(∇v,v)
     ∇v ./= cellsize(sys)
     q_criterion!(Q,∇v,sys,nodes_primal_tmp);
