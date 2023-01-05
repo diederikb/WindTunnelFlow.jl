@@ -87,7 +87,7 @@ xlim = (-0.05 * L_TS_star + x_O_WT_star, 1.05 * L_TS_star + x_O_WT_star)
 ylim = (-0.05 * H_TS_star + y_O_WT_star, 1.05 * H_TS_star + y_O_WT_star)
 files = readdir()
 
-json_gridfile_idx = findall(f->occursin(r".*grid\.txt",f),files)
+json_gridfile_idx = findall(f->occursin(r".*grid\.json",f),files)
 txt_gridfile_idx = findall(f->occursin(r".*grid\.txt",f),files)
 if length(json_gridfile_idx) > 0
     println("Reading existing grid from $(files[json_gridfile_idx[end]]):")
@@ -98,9 +98,9 @@ if length(json_gridfile_idx) > 0
         grid_dict["Δx"],
         grid_dict["xlim"],
         grid_dict["nthreads"])
-elseif length(gridfile_idx) > 0
-    println("Reading existing grid from $(files[gridfile_idx[end]]):")
-    grid_info = readdlm(files[gridfile_idx[end]])
+elseif length(txt_gridfile_idx) > 0
+    println("Reading existing grid from $(files[txt_gridfile_idx[end]]):")
+    grid_info = readdlm(files[txt_gridfile_idx[end]])
     g = PhysicalGrid(
         (grid_info[1,1],grid_info[2,1]),
         (grid_info[3,1],grid_info[4,1]),
