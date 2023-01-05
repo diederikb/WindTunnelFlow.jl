@@ -18,12 +18,9 @@ inputs = JSON.parsefile(json_file)
 include("AFUWT_create_sys.jl")
 
 # Write grid parameters
-open("$(case)_grid.txt", "w") do io
-    writedlm(io, g.N)
-    writedlm(io, g.I0)
-    writedlm(io, g.Δx)
-    writedlm(io, g.xlim )
-    writedlm(io, g.nthreads)
+grid_dict = Dict(key=>getfield(g, key) for key ∈ fieldnames(PhysicalGrid))
+open("$(case)_grid.json", "w") do io
+    JSON.print(io, grid_dict)
 end
 
 # Initialize the solution and integrator
