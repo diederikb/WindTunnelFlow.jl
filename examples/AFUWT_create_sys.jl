@@ -91,7 +91,7 @@ json_gridfile_idx = findall(f->occursin(r".*grid\.json",f),files)
 txt_gridfile_idx = findall(f->occursin(r".*grid\.txt",f),files)
 if length(json_gridfile_idx) > 0
     println("Reading existing grid from $(files[json_gridfile_idx[end]]):")
-    grid_dict = JSON.parse(files[json_gridfile_idx[end]])
+    grid_dict = JSON.parsefile(files[json_gridfile_idx[end]])
     g = PhysicalGrid(
         grid_dict["N"],
         grid_dict["I0"],
