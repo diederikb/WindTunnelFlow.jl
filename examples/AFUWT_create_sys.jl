@@ -22,6 +22,11 @@ function inflow_velocity!(vel,pts,t,phys_params)
     vel .= V_in
 end
 
+# TODO: write this file into this function
+function create_sys(dir,inputs::Dict)
+    return sys, prob, g, params, airfoil
+end
+
 case = inputs["case"]
 airfoil_name = inputs["airfoil"]
 gust_type = inputs["gust_type"]
@@ -93,10 +98,10 @@ if length(json_gridfile_idx) > 0
     println("Reading existing grid from $(files[json_gridfile_idx[end]]):")
     grid_dict = JSON.parsefile(files[json_gridfile_idx[end]])
     g = PhysicalGrid(
-        grid_dict["N"],
-        grid_dict["I0"],
+        (grid_dict["N"][1],grid_dict["N"][2]),
+        (grid_dict["I0"][1],grid_dict["I0"][2]),
         grid_dict["Δx"],
-        grid_dict["xlim"],
+        ((grid_dict["xlim"][1][1],grid_dict["xlim"][1][2]),(grid_dict["xlim"][2][1],grid_dict["xlim"][2][2])),
         grid_dict["nthreads"])
 elseif length(txt_gridfile_idx) > 0
     println("Reading existing grid from $(files[txt_gridfile_idx[end]]):")
