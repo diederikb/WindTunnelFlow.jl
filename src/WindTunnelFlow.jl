@@ -246,8 +246,11 @@ function ViscousFlow.velocity!(v::Edges{Primal},w::Nodes{Dual},sys::ILMSystem{tr
     grad!(wt_vel,velcache.ϕtemp,sys.extra_cache.wt_sys);
 
     # Eldredge JCP 2022 Eq 38: Ḡϕ̄ = Gϕ̄ - I(ϕ⁺-ϕ⁻)∘Rn
+    # Double check if this is necessary
     regularize_normal!(velcache.vϕ,dϕtemp,sys.extra_cache.wt_sys)
     wt_vel .-= velcache.vϕ
+
+    # Interpolate the potential flow velocity onto the body for use in viscousflow_vorticity_bc_rhs!
     interpolate!(extra_cache.wt_body_bc,wt_vel,base_cache)
 
     # Add the potential flow velocity field to the freestream velocity field
