@@ -64,20 +64,20 @@ V_in_star = V_in / c
 A_TS_star = H_TS_star * W_TS_star # Test section area
 Q_in_star = V_in_star * A_TS_star # Inlet flow rate
 Q_SD_star = Q_SD_over_Q_in * Q_in_star # Suction duct flow reate
-x_SD_lo_star = x_SD_lo_over_L_TS * L_TS_star # Lowest x-coordinate of the suction opening
-x_SD_hi_star = x_SD_hi_over_L_TS * L_TS_star # Highest x-coordinate of the suction opening
+x_SD_lo_star = x_SD_lo_over_L_TS * L_TS_star # Lowest x-coordinate of the suction opening in the wind tunnel frame
+x_SD_hi_star = x_SD_hi_over_L_TS * L_TS_star # Highest x-coordinate of the suction opening in the wind tunnel frame
 L_SD_star = x_SD_hi_star - x_SD_lo_star # Length of the suction opening
 A_SD_star = L_SD_star * W_TS_star # Area of the suction opening
 V_SD_star = Q_SD_star / A_SD_star # Flow velocity through the suction opening
-x_O_WT_star = -x_O_over_L_TS * L_TS_star # x-coordinate of the wind tunnel frame origin using the center of the body as the origin
-y_O_WT_star = -y_O_over_H_TS * H_TS_star # y-coordinate of the wind tunnel frame origin using the center of the body as the origin
+x̃_O_WT_star = -x_O_over_L_TS * L_TS_star # x-coordinate of the wind tunnel frame origin using the center of the body as the origin
+ỹ_O_WT_star = -y_O_over_H_TS * H_TS_star # y-coordinate of the wind tunnel frame origin using the center of the body as the origin
 
 params = Dict()
 params["Re"] = Re
 params["grid Re"] = grid_Re
 params["wind tunnel length"] = L_TS_star
 params["wind tunnel height"] = H_TS_star
-params["wind tunnel center"] = (L_TS_star / 2 + x_O_WT_star, H_TS_star / 2 + y_O_WT_star)
+params["wind tunnel center"] = (L_TS_star / 2 + x̃_O_WT_star, H_TS_star / 2 + ỹ_O_WT_star)
 params["freestream speed"] = V_in_star
 params["freestream angle"] = 0.0
 haskey(inputs,"t_open") && (params["t_open"] = t_open)
@@ -88,8 +88,8 @@ haskey(inputs,"sigma_suction") && (params["sigma_suction"] = sigma_suction)
 haskey(inputs,"t_suction") && (params["t_suction"] = t_suction)
 params["V_in"] = V_in_star
 params["V_SD"] = V_SD_star
-xlim = (-0.05 * L_TS_star + x_O_WT_star, 1.05 * L_TS_star + x_O_WT_star)
-ylim = (-0.05 * H_TS_star + y_O_WT_star, 1.05 * H_TS_star + y_O_WT_star)
+xlim = (-0.05 * L_TS_star + x̃_O_WT_star, 1.05 * L_TS_star + x̃_O_WT_star)
+ylim = (-0.05 * H_TS_star + ỹ_O_WT_star, 1.05 * H_TS_star + ỹ_O_WT_star)
 files = readdir()
 
 json_gridfile_idx = findall(f->occursin(r".*grid\.json",f),files)
@@ -134,14 +134,14 @@ else
     airfoil = Plate(c_star,Δs)
 end
 
-T = RigidTransform((L_TS_star / 2 + x_O_WT_star, H_TS_star / 2 + y_O_WT_star), -α*π/180)
+T = RigidTransform((L_TS_star / 2 + x̃_O_WT_star, H_TS_star / 2 + ỹ_O_WT_star), -α*π/180)
 T(airfoil) # transform the body to the current configuration
 
 # Create the inflow
 N = ceil(Int, H_TS_star / surface_point_spacing(g,params))
 inflow_boundary = BasicBody(
-    ones(N) * x_O_WT_star,
-    collect(range(0, H_TS_star, N)) .+ y_O_WT_star,
+    ones(N) * x̃_O_WT_star,
+    collect(range(0, H_TS_star, N)) .+ ỹ_O_WT_star,
     closuretype=RigidBodyTools.OpenBody)
 inflow = UniformFlowThrough(inflow_boundary,inflow_velocity!,3)
 
@@ -150,8 +150,8 @@ params["inlets"] = [inflow]
 # Create the suction at the top of the wind tunnel
 N = ceil(Int, L_SD_star / surface_point_spacing(g,params))
 suction_boundary = BasicBody(
-    collect(range(x_SD_lo_star, x_SD_hi_star, N)) .+ x_O_WT_star,
-    H_TS_star * ones(N) .+ y_O_WT_star;
+    collect(range(x_SD_lo_star, x_SD_hi_star, N)) .+ x̃_O_WT_star,
+    H_TS_star * ones(N) .+ ỹ_O_WT_star;
     closuretype=RigidBodyTools.OpenBody)
 if occursin("step_opening_closing",lowercase(gust_type))
     suction_velocity! = step_suction_velocity!
