@@ -177,6 +177,17 @@ open("$(case)_Q_and_V_probe.txt", "w") do io
     writedlm(io, [sol.t Q_suction/Q_in_star ULE_hist Umid_hist UTE_hist Umean_hist VLE_hist Vmid_hist VTE_hist Vmean_hist])
 end
 
+plot(sol.t,Umid_hist,label="U mid-chord",xlabel="convective time")
+plot!(sol.t,ULE_hist,label="U LE")
+plot!(sol.t,UTE_hist,label="U TE")
+savefig("$(case)_U_probe_history.pdf")
+
+plot(sol.t,Vmid_hist,label="V mid-chord",xlabel="convective time")
+plot!(sol.t,VLE_hist,label="V LE")
+plot!(sol.t,VTE_hist,label="V TE")
+savefig("$(case)_V_probe_history.pdf")
+
+
 function interpolate_freestream(t,phys_params)
     U_interp  = phys_params["Umean_interp"]
     V_interp  = phys_params["Vmean_interp"]
@@ -209,7 +220,7 @@ flush(stdout)
 tspan = (0.0,t_final)
 print("Initializing integrator... ")
 flush(stdout)
-integrator = init(u0,tspan,viscous_sys;saveat=save_times);
+integrator = init(u0,tspan,viscous_sys;saveat=save_times[1:end-10]);
 print("done\n")
 flush(stdout)
 
@@ -263,13 +274,3 @@ savefig("$(case)_CD.pdf")
 plot(sol.t,fy_wt,label="Viscous flow (in wind tunnel)",legend=:topleft,xlabel="convective time",ylabel="C_L")
 plot!(sol.t,fy_viscous,label="Viscous flow")
 savefig("$(case)_CL.pdf")
-
-plot(sol.t,Umid_hist,label="U mid-chord",xlabel="convective time")
-plot!(sol.t,ULE_hist,label="U LE")
-plot!(sol.t,UTE_hist,label="U TE")
-savefig("$(case)_U_probe_history.pdf")
-
-plot(sol.t,Vmid_hist,label="V mid-chord",xlabel="convective time")
-plot!(sol.t,VLE_hist,label="V LE")
-plot!(sol.t,VTE_hist,label="V TE")
-savefig("$(case)_V_probe_history.pdf")
