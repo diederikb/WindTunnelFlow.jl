@@ -137,7 +137,7 @@ flat_plate_probe = Plate(c_star,Δs)
 T = RigidTransform((L_TS_star / 2 + x̃_O_WT_star, H_TS_star / 2 + ỹ_O_WT_star), -α*π/180)
 T(flat_plate_probe) # transform the body to the current configuration
 
-center = (L_TS_star / 2 + x_O_WT_star, H_TS_star / 2 + y_O_WT_star)
+center = (L_TS_star / 2 + x̃_O_WT_star, H_TS_star / 2 + ỹ_O_WT_star)
 LE = (flat_plate_probe.x[1],flat_plate_probe.y[1])
 TE = (flat_plate_probe.x[end],flat_plate_probe.y[end])
 center = ((LE[1]+TE[1])/2,(LE[2]+TE[2])/2)
