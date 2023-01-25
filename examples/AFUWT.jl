@@ -180,8 +180,8 @@ function interpolate_freestream(t,phys_params)
     return U_interp(t), V_interp(t)
 end
 
-params["Umean_interp"] = linear_interpolation(sol.t,Umean_hist)
-params["Vmean_interp"] = linear_interpolation(sol.t,Vmean_hist)
+params["Umean_interp"] = LinearInterpolation(sol.t,Umean_hist)
+params["Vmean_interp"] = LinearInterpolation(sol.t,Vmean_hist)
 params["freestream"] = interpolate_freestream
 
 # ViscousFlow.jl simulation
