@@ -94,8 +94,11 @@ print("Writing solution output during gust... ")
 flush(stdout)
 idx = findall(t_gust_start .<= sol.t .<= t_gust_end)[1:4:end]
 # Ensure that data for snapshots is written to files
-for snapshot_time in snapshot_times
-    push!(idx,findfirst(isapprox.(sol.t,snapshot_time,rtol=1e-6)))
+# if haskey(inputs,"snapshot_times")
+#     snapshot_times = parse.(Float64,(split(inputs["snapshot_times"],' ')))
+#     for snapshot_time in snapshot_times
+#         push!(idx,findfirst(isapprox.(sol.t,snapshot_time,rtol=1e-6)))
+#     end
 end
 for i in idx
     open("$(case)_snapshot_$(i)_vorticity_wind_tunnel.txt", "w") do io
