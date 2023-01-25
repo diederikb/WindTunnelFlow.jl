@@ -19,7 +19,7 @@ end
 
 function parsed_suction_velocity!(vel,pts,t,phys_params)
     interp_linear = phys_params["V_SD_interp"]
-    vel .= interp_linear(t)
+    vel .= -interp_linear(t)
 end
 
 function inflow_velocity!(vel,pts,t,phys_params)
@@ -31,8 +31,6 @@ end
 function create_sys(dir,inputs::Dict)
     return sys, prob, g, params, airfoil
 end
-
-println(inputs)
 
 case = inputs["case"]
 airfoil_name = inputs["airfoil"]
@@ -69,8 +67,8 @@ x_SD_hi_star = x_SD_hi_over_L_TS * L_TS_star # Highest x-coordinate of the sucti
 L_SD_star = x_SD_hi_star - x_SD_lo_star # Length of the suction opening
 A_SD_star = L_SD_star * W_TS_star # Area of the suction opening
 V_SD_star = Q_SD_star / A_SD_star # Flow velocity through the suction opening
-x̃_O_WT_star = -x_O_over_L_TS * L_TS_star # x-coordinate of the wind tunnel frame origin using the center of the body as the origin
-ỹ_O_WT_star = -y_O_over_H_TS * H_TS_star # y-coordinate of the wind tunnel frame origin using the center of the body as the origin
+x̃_O_WT_star = -x_O_over_L_TS * L_TS_star # x-coordinate of the wind tunnel lower left corner using the center of the body as the origin
+ỹ_O_WT_star = -y_O_over_H_TS * H_TS_star # y-coordinate of the wind tunnel lower left corner using the center of the body as the origin
 
 params = Dict()
 params["Re"] = Re

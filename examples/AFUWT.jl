@@ -11,10 +11,8 @@ using Interpolations
 ENV["GKSwstype"]="nul"
 
 # Parse input file
-files = readdir()
-json_file_id = findall(f->occursin(r"AFUWT.*\.json",f),files)[1]
-json_file = files[json_file_id]
-inputs = JSON.parsefile(json_file)
+input_file = ARGS[1]
+inputs = JSON.parsefile(input_file)
 
 # Create the wind tunnel problem
 include("AFUWT_create_sys.jl")
@@ -25,26 +23,34 @@ open("$(case)_grid.json", "w") do io
     JSON.print(io, grid_dict)
 end
 
+if haskey(inputs,"snapshot_times")
+    snapshot_times = parse.(Float64,(split(inputs["snapshot_times"],' ')))
+    print("Requested snapshot times: $(snapshot_times)")
+else
+    snapshot_times = []
+end
+
 # Define a start and end time during which we want to save the solution for all timesteps
 Δt = prob.timestep_func(sys) # simulated time per time step
 save_skip = Int(ceil((5/params["grid Re"])^3))
 
 if occursin("step_opening_closing",lowercase(gust_type))
-    t_gust_start = t_open
-    t_gust_end = t_close + tau_close + 2 * V_in_star / c_star
+    t_gust_start = params["t_open"]
+    t_gust_end = params["t_close"] + params["tau_close"] + 2 * V_in_star / c_star
 elseif occursin("gust_from_file",lowercase(gust_type))
     t_gust_start = inputs["t_gust_start"]
     t_gust_end = inputs["t_gust_end"]
-else
-    t_gust_start = t_suction - 4 * sigma_suction
-    t_gust_end = t_suction + 4 * sigma_suction + 0.5 * V_in_star / c_star
+else # Gaussian suction
+    t_gust_start = params["t_suction"] - 4 * params["sigma_suction"]
+    t_gust_end = params["t_suction"] + 4 * params["sigma_suction"] + 0.5 * V_in_star / c_star
 end
 # Construct an array with the times we want to save the solution
 save_times = cat(
-    0:save_skip*save_skip*Δt:t_gust_start-save_skip*Δt,
+    0:save_skip*save_skip*Δt:t_final,
     t_gust_start:Δt:t_gust_end,
-    t_gust_end+save_skip*Δt:save_skip*Δt:t_final,
-    dims=1)
+    snapshot_times,
+    dims=1);
+sort!(unique!(save_times));
 
 # Initialize the solution and integrator
 print("Initializing solution... ")
@@ -76,6 +82,7 @@ flush(stdout)
 
 # Compute force
 sol = integrator.sol;
+t_wt = deepcopy(sol.t)
 fx_wt, fy_wt = force(sol,sys,1)
 m_wt = moment(sol,sys,1)
 
@@ -83,8 +90,8 @@ m_wt = moment(sol,sys,1)
 pts = points(suction.boundary)
 vel = ScalarData(pts)
 Q_suction = []
-for i in 1:length(sol.t)
-    suction_velocity!(vel,suction.boundary,sol.t[i],params)
+for i in 1:length(t_wt)
+    suction_velocity!(vel,suction.boundary,t_wt[i],params)
     Q_suction_i = -integrate(vel,ScalarData(dlength(suction.boundary))) * W_TS_star
     push!(Q_suction,Q_suction_i)
 end
@@ -92,20 +99,18 @@ end
 # Write solution output during gust
 print("Writing solution output during gust... ")
 flush(stdout)
-idx = findall(t_gust_start .<= sol.t .<= t_gust_end)[1:4:end]
+idx = findall(t_gust_start .<= t_wt .<= t_gust_end)[1:4:end]
 # Ensure that data for snapshots is written to files
-# if haskey(inputs,"snapshot_times")
-#     snapshot_times = parse.(Float64,(split(inputs["snapshot_times"],' ')))
-#     for snapshot_time in snapshot_times
-#         push!(idx,findfirst(isapprox.(sol.t,snapshot_time,rtol=1e-6)))
-#     end
-# end
+for snapshot_time in snapshot_times
+    push!(idx,findfirst(isapprox.(t_wt,snapshot_time,rtol=1e-6)))
+end
+sort!(unique!(idx));
 for i in idx
     open("$(case)_snapshot_$(i)_vorticity_wind_tunnel.txt", "w") do io
         writedlm(io, sol.u[i].x[1])
     end
     open("$(case)_snapshot_$(i)_time_wind_tunnel.txt", "w") do io
-        writedlm(io, sol.t[i])
+        writedlm(io, t_wt[i])
     end
 end
 print("done\n")
@@ -115,11 +120,11 @@ print("Writing force and moment history of the wind tunnel flow...")
 flush(stdout)
 # Write force output
 open("$(case)_force_wind_tunnel.txt", "w") do io
-    writedlm(io, [sol.t fx_wt fy_wt])
+    writedlm(io, [t_wt fx_wt fy_wt])
 end
 # Write moment output
 open("$(case)_moment_wind_tunnel.txt", "w") do io
-    writedlm(io, [sol.t m_wt])
+    writedlm(io, [t_wt m_wt])
 end
 print("done\n")
 flush(stdout)
@@ -156,8 +161,8 @@ wt_vel = zeros_grid(sys);
 
 print("Probing velocity...")
 flush(stdout)
-for i in 1:length(sol.t)
-    ViscousFlow.velocity!(wt_vel, zeros_gridcurl(sys), sys, sol.t[i]);
+for i in 1:length(t_wt)
+    ViscousFlow.velocity!(wt_vel, zeros_gridcurl(sys), sys, t_wt[i]);
     vel_fcn = interpolatable_field(wt_vel,g);
 
     push!(Umid_hist,vel_fcn[1](center[1],center[2]))
@@ -170,6 +175,11 @@ for i in 1:length(sol.t)
     push!(VTE_hist,vel_fcn[2](TE[1],TE[2]))
     push!(Vmean_hist,mean(vel_fcn[2].(flat_plate_probe.x,flat_plate_probe.y)))
 end
+# Correct U velocity to 1.0 if coarse grid is used to avoid different timesteps for the viscous flow
+Umid_hist .+= 1 .- Umid_hist[1];
+ULE_hist .+= 1 .- ULE_hist[1];
+UTE_hist .+= 1 .- UTE_hist[1];
+Umean_hist .+= 1 .- Umean_hist[1];
 print("done\n")
 flush(stdout)
 
@@ -194,8 +204,8 @@ function interpolate_freestream(t,phys_params)
     return U_interp(t), V_interp(t)
 end
 
-params["Umean_interp"] = LinearInterpolation(sol.t,Umean_hist)
-params["Vmean_interp"] = LinearInterpolation(sol.t,Vmean_hist)
+params["Umean_interp"] = LinearInterpolation(sol.t,Umean_hist,extrapolation_bc=Line())
+params["Vmean_interp"] = LinearInterpolation(sol.t,Vmean_hist,extrapolation_bc=Line())
 params["freestream"] = interpolate_freestream
 
 # ViscousFlow.jl simulation
@@ -217,10 +227,9 @@ flush(stdout)
 u0 = init_sol(viscous_sys)
 print("done\n")
 flush(stdout)
-tspan = (0.0,t_final)
 print("Initializing integrator... ")
 flush(stdout)
-integrator = init(u0,tspan,viscous_sys;saveat=save_times[1:end-10]);
+integrator = init(u0,tspan,viscous_sys;saveat=save_times);
 print("done\n")
 flush(stdout)
 
@@ -236,6 +245,7 @@ flush(stdout)
 
 # Compute force
 sol = integrator.sol;
+t_viscous = deepcopy(sol.t)
 fx_viscous, fy_viscous = force(sol,viscous_sys,1)
 m_viscous = moment(sol,viscous_sys,1)
 
@@ -247,7 +257,7 @@ for i in idx
         writedlm(io, sol.u[i].x[1])
     end
     open("$(case)_snapshot_$(i)_time_viscous_flow.txt", "w") do io
-        writedlm(io, sol.t[i])
+        writedlm(io, t_viscous[i])
     end
 end
 print("done\n")
@@ -257,20 +267,20 @@ print("Writing force and moment history of the viscous flow...")
 flush(stdout)
 # Write force output
 open("$(case)_force_viscous_flow.txt", "w") do io
-    writedlm(io, [sol.t fx_viscous fy_viscous])
+    writedlm(io, [t_viscous fx_viscous fy_viscous])
 end
 
 # Write moment output
 open("$(case)_moment_viscous_flow.txt", "w") do io
-    writedlm(io, [sol.t m_viscous])
+    writedlm(io, [t_viscous m_viscous])
 end
 print("done\n")
 flush(stdout)
 
-plot(sol.t,fx_wt,label="Viscous flow (in wind tunnel)",legend=:topleft,xlabel="convective time",ylabel="C_D")
-plot!(sol.t,fx_viscous,label="Viscous flow")
+plot(t_wt,fx_wt,label="Viscous flow (in wind tunnel)",legend=:topleft,xlabel="convective time",ylabel="C_D")
+plot!(t_viscous,fx_viscous,label="Viscous flow")
 savefig("$(case)_CD.pdf")
 
-plot(sol.t,fy_wt,label="Viscous flow (in wind tunnel)",legend=:topleft,xlabel="convective time",ylabel="C_L")
-plot!(sol.t,fy_viscous,label="Viscous flow")
+plot(t_wt,fy_wt,label="Viscous flow (in wind tunnel)",legend=:topleft,xlabel="convective time",ylabel="C_L")
+plot!(t_viscous,fy_viscous,label="Viscous flow")
 savefig("$(case)_CL.pdf")
