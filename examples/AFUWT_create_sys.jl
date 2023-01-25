@@ -17,6 +17,11 @@ function step_suction_velocity!(vel,pts,t,phys_params)
     vel .= -V_out*g(t,t_open,t_close,tau_open,tau_close)
 end
 
+function parsed_suction_velocity!(vel,pts,t,phys_params)
+    interp_linear = phys_params["V_SD_interp"]
+    vel .= interp_linear(t)
+end
+
 function inflow_velocity!(vel,pts,t,phys_params)
     V_in = phys_params["V_in"]
     vel .= V_in
@@ -26,6 +31,8 @@ end
 function create_sys(dir,inputs::Dict)
     return sys, prob, g, params, airfoil
 end
+
+println(inputs)
 
 case = inputs["case"]
 airfoil_name = inputs["airfoil"]
@@ -42,12 +49,6 @@ y_O_over_H_TS = inputs["y_O_over_H_TS"]
 Q_SD_over_Q_in = inputs["Q_SD_over_Q_in"]
 x_SD_lo_over_L_TS = inputs["x_SD_lo_over_L_TS"]
 x_SD_hi_over_L_TS = inputs["x_SD_hi_over_L_TS"]
-haskey(inputs,"t_open") && (t_open = inputs["t_open"])
-haskey(inputs,"t_close") && (t_close = inputs["t_close"])
-haskey(inputs,"tau_open") && (tau_open = inputs["tau_open"])
-haskey(inputs,"tau_close") && (tau_close = inputs["tau_close"])
-haskey(inputs,"sigma_suction") && (sigma_suction = inputs["sigma_suction"])
-haskey(inputs,"t_suction") && (t_suction = inputs["t_suction"])
 grid_Re = get(inputs,"grid_Re",2.0)
 
 # Rescale every length by the chord length
@@ -57,8 +58,7 @@ W_TS_star = W_TS / c
 L_TS_star = L_TS / c
 
 # Set V_in_star to 1
-V_in = 1.0 * c # m/s
-V_in_star = V_in / c
+V_in_star = 1.0
 
 # Compute other wind tunnel parameters in scaled form
 A_TS_star = H_TS_star * W_TS_star # Test section area
@@ -80,12 +80,6 @@ params["wind tunnel height"] = H_TS_star
 params["wind tunnel center"] = (L_TS_star / 2 + x̃_O_WT_star, H_TS_star / 2 + ỹ_O_WT_star)
 params["freestream speed"] = V_in_star
 params["freestream angle"] = 0.0
-haskey(inputs,"t_open") && (params["t_open"] = t_open)
-haskey(inputs,"t_close") && (params["t_close"] = t_close)
-haskey(inputs,"tau_open") && (params["tau_open"] = tau_open)
-haskey(inputs,"tau_close") && (params["tau_close"] = tau_close)
-haskey(inputs,"sigma_suction") && (params["sigma_suction"] = sigma_suction)
-haskey(inputs,"t_suction") && (params["t_suction"] = t_suction)
 params["V_in"] = V_in_star
 params["V_SD"] = V_SD_star
 xlim = (-0.05 * L_TS_star + x̃_O_WT_star, 1.05 * L_TS_star + x̃_O_WT_star)
@@ -154,16 +148,27 @@ suction_boundary = BasicBody(
     H_TS_star * ones(N) .+ ỹ_O_WT_star;
     closuretype=RigidBodyTools.OpenBody)
 if occursin("step_opening_closing",lowercase(gust_type))
-    suction_velocity! = step_suction_velocity!
     println("creating step gust")
-else
-    if !occursin("gaussian_suction",lowercase(gust_type))
-        println("gust not recognized, using gaussian_suction")
-    else
-        println("creating gaussian gust")
-    end
+    suction_velocity! = step_suction_velocity!
+    params["t_open"] = inputs["t_open"]
+    params["t_close"] = inputs["t_close"]
+    params["tau_open"] = inputs["tau_open"]
+    params["tau_close"] = inputs["tau_close"]
+elseif occursin("gaussian_suction",lowercase(gust_type))
+    println("creating gaussian gust")
     suction_velocity! = gaussian_suction_velocity!
+    params["sigma_suction"] = inputs["sigma_suction"]
+    params["t_suction"] = inputs["t_suction"]
+elseif occursin("gust_from_file",lowercase(gust_type))
+    println("creating gust from file with linear interpolation")
+    suction_velocity! = parsed_suction_velocity!
+    parsed_file = readdlm(inputs["gust_file"])
+    interp_linear = LinearInterpolation(parsed_file[:,1], parsed_file[:,2])
+    params["V_SD_interp"] = interp_linear
+else
+    error("no valid gust provided")
 end
+
 suction = UniformFlowThrough(suction_boundary,suction_velocity!,1)
 
 params["outlets"] = [suction]

@@ -1,0 +1,21 @@
+{
+  "case": "AFUWT_NACA0009_noisy_step_opening_closing",
+  "airfoil": "naca0009",
+  "gust_type": "gust_from_file",
+  "H_TS": 0.61,
+  "W_TS": 0.61,
+  "L_TS": 2.1,
+  "x_O_over_L_TS": 0.5,
+  "y_O_over_H_TS": 0.5,
+  "c": 0.245,
+  "Re": 100.0,
+  "alpha": 0.0,
+  "t_final": 18.0,
+  "t_gust_start": 9.0,
+  "t_gust_end": 16.0,
+  "Q_SD_over_Q_in": 0.85,
+  "x_SD_lo_over_L_TS": 0.4,
+  "x_SD_hi_over_L_TS": 0.6,
+  "gust_file": "AFUWT_He2022_fig_11_V_SD_star_hist.txt",
+  "grid_Re": 6.0
+}
