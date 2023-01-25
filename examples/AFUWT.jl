@@ -23,6 +23,27 @@ open("$(case)_grid.json", "w") do io
     JSON.print(io, grid_dict)
 end
 
+# Define a start and end time during which we want to save the solution for all timesteps
+Δt = prob.timestep_func(sys) # simulated time per time step
+save_skip = Int(ceil((5/params["grid Re"])^3))
+
+if occursin("step_opening_closing",lowercase(gust_type))
+    t_gust_start = t_open
+    t_gust_end = t_close + tau_close + 2 * V_in_star / c_star
+elseif occursin("gust_from_file",lowercase(gust_type))
+    t_gust_start = inputs["t_gust_start"]
+    t_gust_end = inputs["t_gust_end"]
+else
+    t_gust_start = t_suction - 4 * sigma_suction
+    t_gust_end = t_suction + 4 * sigma_suction + 0.5 * V_in_star / c_star
+end
+# Construct an array with the times we want to save the solution
+save_times = cat(
+    0:save_skip*save_skip*Δt:t_gust_start-save_skip*Δt,
+    t_gust_start:Δt:t_gust_end,
+    t_gust_end+save_skip*Δt:save_skip*Δt:t_final,
+    dims=1)
+
 # Initialize the solution and integrator
 print("Initializing solution... ")
 u0 = init_sol(sys)
@@ -31,9 +52,7 @@ flush(stdout)
 tspan = (0.0,t_final)
 print("Initializing integrator... ")
 flush(stdout)
-Δt = prob.timestep_func(sys) # simulated time per time step
-save_skip = Int(ceil((5/params["grid Re"])^3))
-integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1),saveat=save_skip*Δt);
+integrator = init(u0,tspan,sys,alg=ConstrainedSystems.LiskaIFHERK(maxiter=1),saveat=save_times);
 print("done\n")
 flush(stdout)
 
@@ -71,12 +90,11 @@ end
 # Write solution output during gust
 print("Writing solution output during gust... ")
 flush(stdout)
-if occursin("step_opening_closing",lowercase(gust_type))
-    idx = findall(t_open .<= sol.t .<= t_close + tau_close + 2 * V_in_star / c_star)
-else
-    idx = findall(t_suction - 4 * sigma_suction .<= sol.t .<= t_suction + 4 * sigma_suction + 2 * V_in_star / c_star)
+idx = findall(t_gust_start .<= sol.t .<= t_gust_end)[1:4:end]
+# Ensure that data for snapshots is written to files
+for snapshot_time in snapshot_times
+    push!(idx,findfirst(isapprox.(sol.t,snapshot_time,rtol=1e-6)))
 end
-
 for i in idx
     open("$(case)_snapshot_$(i)_vorticity_wind_tunnel.txt", "w") do io
         writedlm(io, sol.u[i].x[1])
@@ -205,7 +223,7 @@ flush(stdout)
 tspan = (0.0,t_final)
 print("Initializing integrator... ")
 flush(stdout)
-integrator = init(u0,tspan,viscous_sys;saveat=save_skip*Δt);
+integrator = init(u0,tspan,viscous_sys;saveat=save_times);
 print("done\n")
 flush(stdout)
 
