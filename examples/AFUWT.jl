@@ -5,6 +5,7 @@ using Plots
 using Measures
 using LinearAlgebra
 using BenchmarkTools
+using Statistics
 
 ENV["GKSwstype"]="nul"
 
@@ -106,6 +107,8 @@ end
 print("done\n")
 flush(stdout)
 
+print("Writing force and moment history of the wind tunnel flow...")
+flush(stdout)
 # Write force output
 open("$(case)_force_wind_tunnel.txt", "w") do io
     writedlm(io, [sol.t fx_wt fy_wt])
@@ -114,6 +117,8 @@ end
 open("$(case)_moment_wind_tunnel.txt", "w") do io
     writedlm(io, [sol.t m_wt])
 end
+print("done\n")
+flush(stdout)
 
 # Probe the velocity history at LE, center and TE of the body when the body is not present to use as freestream for a ViscousFlow.jl and Wagner simulation
 print("Creating probe WindTunnelProblem... ")
@@ -256,6 +261,8 @@ end
 print("done\n")
 flush(stdout)
 
+print("Writing force and moment history of the viscous flow...")
+flush(stdout)
 # Write force output
 open("$(case)_force_viscous_flow.txt", "w") do io
     writedlm(io, [sol.t fx_viscous fy_viscous])
@@ -265,57 +272,23 @@ end
 open("$(case)_moment_viscous_flow.txt", "w") do io
     writedlm(io, [sol.t m_viscous])
 end
-
-# Wagner response
-Φ(t) = t ≥ 0 ? 1.0 - 0.165*exp(-0.091*t) - 0.335*exp(-0.6*t) : 0.0
-
-function duhamelintegral(f_array,t_array,ind_fun)
-    s = 0.0
-    Δt = diff(t_array)
-    for i in 2:length(t_array)
-        s += f_array[i]*ind_fun(t_array[end]-t_array[i])*Δt[i-1]
-    end
-    return s
-end
-
-ḣ_old = 0.0
-Γb_old = 0.0
-fx_wagner = Vector()
-fy_wagner = Vector()
-Γ̇b_hist = Vector()
-
-Δt_hist = diff(sol.t)
-
-Γ_b0 = -π*c_star*V_in_star*α*pi/180
-
-for i in 1:length(integrator.sol.t)-1
-    ḣ = -Vmid_hist[i+1]
-    ḧ = (ḣ-ḣ_old)/Δt_hist[i]
-    global ḣ_old = ḣ
-    Γb = π*c_star*ḣ
-    Γ̇b = (Γb-Γb_old)/Δt_hist[i]
-    global Γb_old = Γb
-
-    push!(Γ̇b_hist,Γ̇b)
-
-    fy_wagner_added_mass_i = -π/4*c_star^2*ḧ
-    fy_wagner_i = fy_wagner_added_mass_i - Γ_b0 * Φ(sol.t[i]) - duhamelintegral(Γ̇b_hist,sol.t[2:i],Φ)
-
-    push!(fx_wagner,0.0)
-    push!(fy_wagner,fy_wagner_i)
-end
-
-# Write output
-open("$(case)_force_wagner.txt", "w") do io
-    writedlm(io, [sol.t[1:end-1] fx_wagner fy_wagner])
-end
+print("done\n")
+flush(stdout)
 
 plot(sol.t,fx_wt,label="Viscous flow (in wind tunnel)",legend=:topleft,xlabel="convective time",ylabel="C_D")
 plot!(sol.t,fx_viscous,label="Viscous flow")
-plot!(sol.t[1:end-1],fx_wagner,label="Wagner")
 savefig("$(case)_CD.pdf")
 
 plot(sol.t,fy_wt,label="Viscous flow (in wind tunnel)",legend=:topleft,xlabel="convective time",ylabel="C_L")
 plot!(sol.t,fy_viscous,label="Viscous flow")
-plot!(sol.t[1:end-1],fy_wagner,label="Wagner")
 savefig("$(case)_CL.pdf")
+
+plot(sol.t,Umid_hist,label="U mid-chord",xlabel="convective time")
+plot!(sol.t,ULE_hist,label="U LE")
+plot!(sol.t,UTE_hist,label="U TE")
+savefig("$(case)_U_probe_history.pdf")
+
+plot(sol.t,Vmid_hist,label="V mid-chord",xlabel="convective time")
+plot!(sol.t,VLE_hist,label="V LE")
+plot!(sol.t,VTE_hist,label="V TE")
+savefig("$(case)_V_probe_history.pdf")
