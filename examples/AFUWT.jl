@@ -99,7 +99,7 @@ idx = findall(t_gust_start .<= sol.t .<= t_gust_end)[1:4:end]
 #     for snapshot_time in snapshot_times
 #         push!(idx,findfirst(isapprox.(sol.t,snapshot_time,rtol=1e-6)))
 #     end
-end
+# end
 for i in idx
     open("$(case)_snapshot_$(i)_vorticity_wind_tunnel.txt", "w") do io
         writedlm(io, sol.u[i].x[1])
