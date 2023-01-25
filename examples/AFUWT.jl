@@ -6,6 +6,7 @@ using Measures
 using LinearAlgebra
 using BenchmarkTools
 using Statistics
+using Interpolations
 
 ENV["GKSwstype"]="nul"
 
@@ -129,17 +130,24 @@ probe_sys = construct_system(probe_prob);
 print("done\n")
 flush(stdout)
 
+flat_plate_probe = Plate(c_star,Δs)
+T = RigidTransform((L_TS_star / 2 + x̃_O_WT_star, H_TS_star / 2 + ỹ_O_WT_star), -α*π/180)
+T(flat_plate_probe) # transform the body to the current configuration
+
 center = (L_TS_star / 2 + x_O_WT_star, H_TS_star / 2 + y_O_WT_star)
-LE = (center[1] - 1/2*cos(α*π/180), center[2] + 1/2*sin(α*π/180))
-TE = (center[1] + 1/2*cos(α*π/180), center[2] - 1/2*sin(α*π/180))
+LE = (flat_plate_probe.x[1],flat_plate_probe.y[1])
+TE = (flat_plate_probe.x[end],flat_plate_probe.y[end])
+center = ((LE[1]+TE[1])/2,(LE[2]+TE[2])/2)
 
 Umid_hist = Vector()
 ULE_hist = Vector()
 UTE_hist = Vector()
+Umean_hist = Vector()
 
 Vmid_hist = Vector()
 VLE_hist = Vector()
 VTE_hist = Vector()
+Vmean_hist = Vector()
 
 wt_vel = zeros_grid(sys);
 
@@ -152,59 +160,29 @@ for i in 1:length(sol.t)
     push!(Umid_hist,vel_fcn[1](center[1],center[2]))
     push!(ULE_hist,vel_fcn[1](LE[1],LE[2]))
     push!(UTE_hist,vel_fcn[1](TE[1],TE[2]))
+    push!(Umean_hist,mean(vel_fcn[1].(plate.x,plate.y)))
 
     push!(Vmid_hist,vel_fcn[2](center[1],center[2]))
     push!(VLE_hist,vel_fcn[2](LE[1],LE[2]))
     push!(VTE_hist,vel_fcn[2](TE[1],TE[2]))
+    push!(Vmean_hist,mean(vel_fcn[2].(plate.x,plate.y)))
 end
 print("done\n")
 flush(stdout)
 
 open("$(case)_Q_and_V_probe.txt", "w") do io
-    writedlm(io, [sol.t Q_suction/Q_in_star ULE_hist Umid_hist UTE_hist VLE_hist Vmid_hist VTE_hist])
+    writedlm(io, [sol.t Q_suction/Q_in_star ULE_hist Umid_hist UTE_hist Umean_hist VLE_hist Vmid_hist VTE_hist Vmean_hist])
 end
 
-plot(integrator.sol.t,Umid_hist,label="U mid-chord",xlabel="convective time")
-plot!(integrator.sol.t,ULE_hist,label="U LE")
-plot!(integrator.sol.t,UTE_hist,label="U TE")
-savefig("$(case)_U_probe_history.pdf")
-
-plot(integrator.sol.t,Vmid_hist,label="V mid-chord",xlabel="convective time")
-plot!(integrator.sol.t,VLE_hist,label="V LE")
-plot!(integrator.sol.t,VTE_hist,label="V TE")
-savefig("$(case)_V_probe_history.pdf")
-
-function gaussian_freestream(t,phys_params)
-    Uinf = get(phys_params,"freestream speed",0.0)
-    U_mid = get(phys_params,"U_mid",0.0)
-    V_mid = get(phys_params,"V_mid",0.0)
-    σ = phys_params["sigma_suction"]
-    t_0 = phys_params["t_suction"]
-    g = Gaussian(σ,sqrt(π*σ^2)) >> t_0
-    return Uinf - (Uinf - U_mid)*g(t), V_mid*g(t)
+function interpolate_freestream(t,phys_params)
+    U_interp  = phys_params["Umean_interp"]
+    V_interp  = phys_params["Vmean_interp"]
+    return U_interp(t), V_interp(t)
 end
 
-function step_freestream(t,phys_params)
-    Uinf = get(phys_params,"freestream speed",0.0)
-    U_mid = get(phys_params,"U_mid",0.0)
-    V_mid = get(phys_params,"V_mid",0.0)
-    t_open = phys_params["t_open"]
-    t_close = phys_params["t_close"]
-    tau_open = phys_params["tau_open"]
-    tau_close = phys_params["tau_close"]
-    g(t,t_open,t_close,tau_open,tau_close) = (t_open <= t < t_close ? (1 - exp(-(t-t_open)/tau_open)) : 0.0) + (t_close <= t ? (1 - exp(-(t_close-t_open)/tau_open)) * exp(-(t-t_close)/tau_close) : 0.0)
-
-    return Uinf - (Uinf - U_mid)*g(t,t_open,t_close,tau_open,tau_close), V_mid*g(t,t_open,t_close,tau_open,tau_close)
-end
-
-params["U_mid"] = minimum(Umid_hist)
-params["V_mid"] = maximum(Vmid_hist)
-
-if occursin("step_opening_closing",lowercase(gust_type))
-    params["freestream"] = step_freestream
-else
-    params["freestream"] = gaussian_freestream
-end
+params["Umean_interp"] = linear_interpolation(sol.t,Umean_hist)
+params["Vmean_interp"] = linear_interpolation(sol.t,Vmean_hist)
+params["freestream"] = interpolate_freestream
 
 # ViscousFlow.jl simulation
 print("Creating ViscousIncompressibleFlowProblem... ")
