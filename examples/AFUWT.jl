@@ -45,12 +45,21 @@ else # Gaussian suction
     t_gust_end = params["t_suction"] + 4 * params["sigma_suction"] + 0.5 * V_in_star / c_star
 end
 # Construct an array with the times we want to save the solution
-save_times = cat(
-    0:save_skip*save_skip*Δt:t_final,
-    t_gust_start:Δt:t_gust_end,
-    snapshot_times,
-    dims=1);
-sort!(unique!(save_times));
+if (t_gust_end - t_gust_start) > 6 && save_skip > 2
+    save_times = cat(
+        0:save_skip*save_skip*Δt:t_final,
+        t_gust_start:2*Δt:t_gust_end,
+        snapshot_times,
+        dims=1);
+    sort!(unique!(save_times));
+else
+    save_times = cat(
+        0:save_skip*save_skip*Δt:t_final,
+        t_gust_start:Δt:t_gust_end,
+        snapshot_times,
+        dims=1);
+    sort!(unique!(save_times));
+end
 
 # Initialize the solution and integrator
 print("Initializing solution... ")
