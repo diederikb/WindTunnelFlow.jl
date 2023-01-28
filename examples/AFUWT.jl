@@ -186,15 +186,15 @@ for i in 1:length(t_wt)
 end
 # Correct U velocity to 1.0 if coarse grid is used to avoid different timesteps for the viscous flow
 if occursin("gust_from_file",lowercase(gust_type))
-    Umid_hist[1] = 1.0 
+    Umid_hist[1] = 1.0
     ULE_hist[1] = 1.0
-    UTE_hist[1] = 1.0 
+    UTE_hist[1] = 1.0
     Umean_hist[1] = 1.0
 else
-    Umid_hist .+= 1 .- Umid_hist[1];
-    ULE_hist .+= 1 .- ULE_hist[1];
-    UTE_hist .+= 1 .- UTE_hist[1];
-    Umean_hist .+= 1 .- Umean_hist[1];
+    Umid_hist .+= 1 .- Umid_hist[1]
+    ULE_hist .+= 1 .- ULE_hist[1]
+    UTE_hist .+= 1 .- UTE_hist[1]
+    Umean_hist .+= 1 .- Umean_hist[1]
 end
 print("done\n")
 flush(stdout)
@@ -220,8 +220,8 @@ function interpolate_freestream(t,phys_params)
     return U_interp(t), V_interp(t)
 end
 
-params["Umid_interp"] = LinearInterpolation(sol.t,Umean_hist,extrapolation_bc=Line())
-params["Vmid_interp"] = LinearInterpolation(sol.t,Vmean_hist,extrapolation_bc=Line())
+params["Umid_interp"] = LinearInterpolation(sol.t,Umid_hist,extrapolation_bc=Line())
+params["Vmid_interp"] = LinearInterpolation(sol.t,Vmid_hist,extrapolation_bc=Line())
 params["freestream"] = interpolate_freestream
 
 # ViscousFlow.jl simulation
