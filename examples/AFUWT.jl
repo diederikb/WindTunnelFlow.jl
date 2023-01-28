@@ -206,13 +206,13 @@ savefig("$(case)_V_probe_history.pdf")
 
 
 function interpolate_freestream(t,phys_params)
-    U_interp  = phys_params["Umean_interp"]
-    V_interp  = phys_params["Vmean_interp"]
+    U_interp  = phys_params["Umid_interp"]
+    V_interp  = phys_params["Vmid_interp"]
     return U_interp(t), V_interp(t)
 end
 
-params["Umean_interp"] = LinearInterpolation(sol.t,Umean_hist,extrapolation_bc=Line())
-params["Vmean_interp"] = LinearInterpolation(sol.t,Vmean_hist,extrapolation_bc=Line())
+params["Umid_interp"] = LinearInterpolation(sol.t,Umean_hist,extrapolation_bc=Line())
+params["Vmid_interp"] = LinearInterpolation(sol.t,Vmean_hist,extrapolation_bc=Line())
 params["freestream"] = interpolate_freestream
 
 # ViscousFlow.jl simulation
