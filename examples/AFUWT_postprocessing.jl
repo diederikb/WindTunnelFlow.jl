@@ -30,7 +30,7 @@ function id_list_with_patterns(dir,id_prefix,patterns::AbstractVector)
     files = readdir(dir)
     file_ids_with_patterns = findall(f -> all(occursin.(patterns,f)),files)
     match_string = "(?<=$(id_prefix))(\\d+)"
-    my_matches = match.(Regex(match_string), files[file_ids_with_pattern]) 
+    my_matches = match.(Regex(match_string), files[file_ids_with_pattern])
     return [parse(Int,my_match.match) for my_match in my_matches]
 end
 
@@ -119,7 +119,7 @@ Wagner function
 
 """
 Returns the result of the Duhamel integral.
-""" 
+"""
 function duhamelintegral(df_array,t_array,ind_fun)
     s = 0.0
     for i in 1:length(t_array)
@@ -144,8 +144,8 @@ function wagner_lift_response(t::AbstractVector, U, V, α; c=1, steadystart=fals
     tconv = zeros(length(t))
     tconv = [sum(diff(t)[1:i] .* Umidpoint[1:i]) for i in 1:length(t) - 1]
 
-    dUdt = central_difference(t,U)
-    dVdt = central_difference(t,V)
+    dUdt = backward_difference(t,U)
+    dVdt = backward_difference(t,V)
 
     added_mass = -π/4 .* c^2 .* (dVdt .* cos(α*π/180)^2 .+ dUdt .* sin.(α*π/180) .* cos.(α*π/180))
 
@@ -155,7 +155,7 @@ function wagner_lift_response(t::AbstractVector, U, V, α; c=1, steadystart=fals
         circulatory_lift .-= U .* Γb[0] .* Φ.(t)
     end
     lift = added_mass .+ circulatory_lift
-    
+
     return lift, added_mass, circulatory_lift
 end
 
@@ -164,6 +164,13 @@ function central_difference(t,f)
     dfdt[1] = (f[2] - f[1]) / (t[2] - t[1])
     dfdt[end] = (f[end] - f[end-1]) / (t[end] - t[end-1])
     dfdt[2:end-1] = (f[3:end] .- f[1:end-2]) ./ (t[3:end] .- t[1:end-2])
+    return dfdt
+end
+
+function backward_difference(t,f)
+    dfdt = zeros(length(t))
+    dfdt[1] = (f[2] - f[1]) / (t[2] - t[1])
+    dfdt[2:end] = (f[2:end] .- f[1:end-1]) ./ (t[2:end] .- t[1:end-1])
     return dfdt
 end
 
