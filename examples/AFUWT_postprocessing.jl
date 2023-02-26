@@ -4,6 +4,7 @@ using JSON
 using Statistics
 using Interpolations
 using Contour
+using LinearAlgebra
 
 ENV["GKSwstype"]="nul"
 
@@ -90,10 +91,9 @@ end
 """
 Writes the time `t` and force `f` history to `filename`.
 """
-function write_force(filename::String, t, f; delimiter=' ')
+function write_arrays(filename::String, arrays...; delimiter=' ')
     open(filename, "w") do io
-        writedlm(io,["t" "f"],delimiter)
-        writedlm(io, zip(t, f), delimiter)
+        writedlm(io, zip(arrays...), delimiter)
     end
 end
 
@@ -129,16 +129,16 @@ function duhamelintegral(df_array,t_array,ind_fun)
 end
 
 """
-Computes the vertical force response for a flat plate at a small angle of attack `α`, moving at a velocity (`U`,`V`), and with its wake along the x-axis of the body reference frame.
+Computes the vertical force response for a flat plate at a small angle of attack `α`, moving at a velocity (`-U`,`V`), and with its wake along the x-axis of the body reference frame.
 α in degrees.
 
 Some of the differencing might be inconsistent with each other.
 """
-function wagner_lift_response(t::AbstractVector, U, V, α; c=1, steadystart=false)
+function wagner_lift_response(t::AbstractVector, U, V, α; c=1, steadystart=false, steadycirc=0.0)
     length(U) == 1 && (U = U * ones(length(t)))
     length(V) == 1 && (V = V * ones(length(t)))
 
-    Γb = π .* c .* (V .+ U .* sin.(α*π/180))
+    Γb = π .* c .* (V .* cos(α*π/180) .+ U .* sin.(α*π/180))
     dΓb = diff(Γb)
     Umidpoint = 0.5 * (U[1:end-1] + U[2:end])
     tconv = zeros(length(t))
@@ -147,10 +147,10 @@ function wagner_lift_response(t::AbstractVector, U, V, α; c=1, steadystart=fals
     dUdt = backward_difference(t,U)
     dVdt = backward_difference(t,V)
 
-    added_mass = -π/4 .* c^2 .* (dVdt .* cos(α*π/180)^2 .+ dUdt .* sin.(α*π/180) .* cos.(α*π/180))
+    added_mass = -π/4 .* c^2 .* (dVdt .* cos(α*π/180)^2 .+ dUdt .* sin.(α*π/180) .* cos.(α*π/180) .- dVdt .* sin.(α*π/180) .* cos.(α*π/180) - dUdt .* sin(α*π/180)^2)
 
     circulatory_lift = zeros(length(t))
-    circulatory_lift[2:end] = .-U[2:end] .* [duhamelintegral(dΓb[1:i], tconv[2:i], Φ) for i in 1:length(t)-1]
+    circulatory_lift[2:end] = .-U[2:end] .* [duhamelintegral(dΓb[1:i], tconv[2:i], Φ) for i in 1:length(t)-1] .+ steadycirc
     if(!steadystart)
         circulatory_lift .-= U .* Γb[0] .* Φ.(t)
     end
@@ -172,6 +172,14 @@ function backward_difference(t,f)
     dfdt[1] = (f[2] - f[1]) / (t[2] - t[1])
     dfdt[2:end] = (f[2:end] .- f[1:end-1]) ./ (t[2:end] .- t[1:end-1])
     return dfdt
+end
+
+function volume(body::Body)
+    body_normals = normals(body)
+    body_points = points(body)
+    body_areas = dlength(body)
+    body_volume = dot(body_points.u,body_normals.u .* body_areas)
+    return body_volume
 end
 
 
